@@ -1,0 +1,3 @@
+# комментарий
+example.com
+test.org

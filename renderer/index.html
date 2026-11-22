@@ -1,0 +1,1018 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; font-src 'self'">
+<title>Yume Haze Zapret</title>
+<style>
+:root{
+  --bg:#08070f; --bg2:#0e0c18; --panel:rgba(20,18,32,.72); --panel2:rgba(28,25,44,.6);
+  --line:rgba(185,162,255,.14); --line2:rgba(185,162,255,.26);
+  --txt:#ece9f7; --muted:#8f8aa8; --dim:#6b677f;
+  --a1:#b9a2ff; --a2:#ff9fcb;
+  --ok:#5fe3b0; --warn:#ffcf7a; --bad:#ff7a8a;
+  --r:16px; --shadow:0 20px 60px rgba(0,0,0,.45);
+  --font:"Segoe UI Variable Display","Segoe UI",Inter,system-ui,-apple-system,sans-serif;
+  --mono:"Cascadia Mono",Consolas,"JetBrains Mono",ui-monospace,monospace;
+}
+[data-anim="off"] *{animation:none!important;transition:none!important}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{
+  font-family:var(--font); color:var(--txt); background:var(--bg); overflow:hidden;
+  -webkit-font-smoothing:antialiased; font-size:14px;
+}
+button{font-family:inherit;font-size:inherit;color:inherit;background:none;border:0;cursor:pointer}
+input,textarea,select{font-family:inherit;font-size:inherit;color:inherit}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(185,162,255,.18);border-radius:8px;border:3px solid transparent;background-clip:content-box}
+::-webkit-scrollbar-thumb:hover{background:rgba(185,162,255,.34);background-clip:content-box}
+.mono{font-family:var(--mono)}
+.muted{color:var(--muted)}
+
+#app{display:flex;flex-direction:column;height:100vh}
+
+/* ---------- titlebar ---------- */
+.titlebar{
+  height:44px;flex:0 0 44px;display:flex;align-items:center;gap:10px;padding:0 0 0 14px;
+  background:linear-gradient(180deg,rgba(24,21,38,.96),rgba(12,10,20,.9));
+  border-bottom:1px solid var(--line); -webkit-app-region:drag; user-select:none; z-index:30;
+}
+.mini-logo{
+  width:24px;height:24px;border-radius:8px;display:grid;place-items:center;font-size:14px;
+  background:linear-gradient(135deg,var(--a1),var(--a2));color:#14101f;font-weight:700;
+  box-shadow:0 0 18px rgba(185,162,255,.45)
+}
+.titlebar>span{font-size:12.5px;letter-spacing:.3px}
+.ver{color:var(--dim);font-family:var(--mono);font-size:11px}
+.wctl{margin-left:auto;display:flex;height:44px;-webkit-app-region:no-drag}
+.wctl span{width:46px;display:grid;place-items:center;color:var(--muted);font-size:10px;transition:.15s}
+.wctl span:hover{background:rgba(185,162,255,.12);color:var(--txt)}
+.wctl span:last-child:hover{background:#c2384e;color:#fff}
+
+/* ---------- shell ---------- */
+.shell{flex:1;display:flex;min-height:0;position:relative}
+.haze{
+  position:absolute;inset:0;pointer-events:none;z-index:0;
+  background:
+   radial-gradient(700px 420px at 12% -8%, rgba(185,162,255,.16), transparent 60%),
+   radial-gradient(620px 420px at 92% 8%, rgba(255,159,203,.12), transparent 62%),
+   radial-gradient(900px 600px at 60% 110%, rgba(126,232,196,.06), transparent 60%);
+}
+
+/* ---------- sidebar ---------- */
+.side{
+  width:246px;flex:0 0 246px;display:flex;flex-direction:column;gap:4px;padding:16px 12px 12px;
+  background:linear-gradient(180deg,rgba(16,14,26,.94),rgba(10,9,17,.96));
+  border-right:1px solid var(--line);z-index:2;overflow-y:auto;overflow-x:hidden;
+}
+.brand{display:flex;align-items:center;gap:11px;padding:4px 6px 16px}
+.mark{
+  width:40px;height:40px;border-radius:13px;display:grid;place-items:center;font-size:21px;font-weight:700;
+  background:linear-gradient(135deg,var(--a1),var(--a2));color:#14101f;
+  box-shadow:0 8px 26px rgba(185,162,255,.35), inset 0 1px 0 rgba(255,255,255,.5)
+}
+.brand b{display:block;font-size:14.5px;letter-spacing:.2px}
+.brand small{color:var(--muted);font-size:11px;letter-spacing:1.6px;text-transform:uppercase}
+.nav-label{font-size:10.5px;letter-spacing:1.5px;text-transform:uppercase;color:var(--dim);padding:10px 10px 6px}
+.nav{display:flex;flex-direction:column;gap:2px}
+.nav button{
+  display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:11px;color:var(--muted);
+  font-size:13.5px;transition:background .16s,color .16s;position:relative;text-align:left;width:100%
+}
+.nav button i{width:18px;height:18px;flex:0 0 18px;display:grid;place-items:center;opacity:.9}
+.nav button i svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.nav button:hover{background:rgba(185,162,255,.08);color:var(--txt)}
+.nav button.on{background:linear-gradient(90deg,rgba(185,162,255,.2),rgba(255,159,203,.08));color:#fff}
+.nav button.on::before{
+  content:"";position:absolute;left:-12px;top:8px;bottom:8px;width:3px;border-radius:0 3px 3px 0;
+  background:linear-gradient(180deg,var(--a1),var(--a2))
+}
+.badge{
+  margin-left:auto;font-style:normal;font-size:10.5px;font-weight:600;min-width:18px;height:18px;
+  padding:0 5px;border-radius:9px;display:grid;place-items:center;
+  background:linear-gradient(135deg,var(--a1),var(--a2));color:#151022
+}
+.badge[hidden]{display:none}
+.side-status{
+  margin:14px 2px 6px;padding:10px 12px;border-radius:12px;border:1px solid var(--line);
+  background:rgba(255,255,255,.02);display:flex;flex-direction:column;gap:7px;font-size:12px
+}
+.side-status div{display:flex;align-items:center;gap:8px;color:var(--muted)}
+.side-status em{margin-left:auto;font-style:normal;font-family:var(--mono);font-size:11px;color:var(--txt)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--dim);flex:0 0 7px;box-shadow:0 0 0 3px rgba(255,255,255,.02)}
+.dot.on{background:var(--ok);box-shadow:0 0 10px rgba(95,227,176,.8)}
+.dot.off{background:var(--bad);box-shadow:0 0 10px rgba(255,122,138,.5)}
+
+/* ---------- main ---------- */
+.main{flex:1;min-width:0;overflow-y:auto;position:relative;z-index:1;scroll-behavior:smooth}
+.wrap{padding:22px 26px 40px;max-width:1280px;margin:0 auto}
+.phead{display:flex;align-items:flex-start;gap:16px;margin-bottom:18px;flex-wrap:wrap}
+.phead h1{margin:0;font-size:23px;font-weight:600;letter-spacing:.2px}
+.phead p{margin:4px 0 0;color:var(--muted);font-size:12.5px}
+.pills{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+.pill{
+  display:flex;align-items:center;gap:7px;padding:6px 12px;border-radius:100px;font-size:12px;
+  border:1px solid var(--line);background:rgba(255,255,255,.03);color:var(--muted)
+}
+.page{display:none;animation:fade .22s ease}
+.page.on{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+/* ---------- card ---------- */
+.card{
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:18px;
+  backdrop-filter:blur(14px);position:relative
+}
+.card h3{margin:0;font-size:14.5px;font-weight:600;letter-spacing:.2px}
+.card .sub{color:var(--muted);font-size:12.5px;margin-top:3px;line-height:1.45}
+.mt{margin-top:14px}
+.mt2{margin-top:22px}
+.row{display:flex;align-items:center;gap:10px}
+.between{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.sep{border:0;border-top:1px solid var(--line);margin:16px 0}
+.stack{display:flex;flex-direction:column;gap:10px}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+@media(max-width:1080px){.grid-3{grid-template-columns:1fr 1fr}.grid-2{grid-template-columns:1fr}}
+
+/* ---------- buttons ---------- */
+.btn{
+  display:inline-flex;align-items:center;gap:7px;padding:8px 14px;border-radius:10px;font-size:13px;
+  border:1px solid var(--line2);background:rgba(185,162,255,.07);transition:.16s;white-space:nowrap
+}
+.btn i{width:15px;height:15px;display:grid;place-items:center}
+.btn i svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.btn:hover{background:rgba(185,162,255,.16);border-color:rgba(185,162,255,.42);transform:translateY(-1px)}
+.btn:active{transform:none}
+.btn[disabled]{opacity:.4;pointer-events:none}
+.btn.sm{padding:6px 11px;font-size:12.5px;border-radius:9px}
+.btn.ghost{background:transparent;border-color:var(--line)}
+.btn.ghost:hover{background:rgba(185,162,255,.1)}
+.btn.pri{
+  background:linear-gradient(135deg,var(--a1),var(--a2));color:#151022;font-weight:600;border:0;
+  box-shadow:0 8px 24px rgba(185,162,255,.28)
+}
+.btn.pri:hover{filter:brightness(1.07);box-shadow:0 10px 30px rgba(185,162,255,.4)}
+.btn.danger{border-color:rgba(255,122,138,.45);background:rgba(255,122,138,.12);color:#ffb3bd}
+.btn.danger:hover{background:rgba(255,122,138,.24)}
+.icon-btn{
+  width:34px;height:34px;border-radius:10px;border:1px solid var(--line);display:grid;place-items:center;
+  background:rgba(255,255,255,.03);color:var(--muted);transition:.16s
+}
+.icon-btn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.icon-btn:hover{color:var(--txt);border-color:var(--line2);background:rgba(185,162,255,.12)}
+
+/* ---------- hero ---------- */
+.hero{display:grid;grid-template-columns:236px 1fr;gap:20px;align-items:stretch}
+.hero-left{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px}
+.orb{position:relative;width:168px;height:168px;display:grid;place-items:center}
+.orb-glow{
+  position:absolute;inset:8px;border-radius:50%;filter:blur(26px);opacity:.42;
+  background:radial-gradient(circle,var(--a1),transparent 68%);transition:.5s
+}
+.orb-ring{
+  position:absolute;inset:0;border-radius:50%;
+  border:1px dashed rgba(185,162,255,.35);animation:spin 18s linear infinite
+}
+.orb-ring::after{
+  content:"";position:absolute;top:-4px;left:50%;width:8px;height:8px;border-radius:50%;
+  background:var(--a2);box-shadow:0 0 14px var(--a2);transform:translateX(-50%)
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.orb-core{
+  width:104px;height:104px;border-radius:50%;display:grid;place-items:center;
+  background:radial-gradient(circle at 35% 30%,rgba(255,255,255,.16),rgba(185,162,255,.12));
+  border:1px solid rgba(185,162,255,.5);transition:.3s;
+  box-shadow:inset 0 0 28px rgba(185,162,255,.22),0 0 40px rgba(185,162,255,.18)
+}
+.orb-core svg{width:36px;height:36px;stroke:var(--txt);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;transition:.3s}
+.orb-core:hover{transform:scale(1.05)}
+.hero.on .orb-core{
+  background:radial-gradient(circle at 35% 30%,rgba(255,255,255,.3),rgba(95,227,176,.28));
+  border-color:rgba(95,227,176,.7);box-shadow:inset 0 0 30px rgba(95,227,176,.25),0 0 60px rgba(95,227,176,.35)
+}
+.hero.on .orb-core svg{stroke:#eafff8}
+.hero.on .orb-glow{background:radial-gradient(circle,#5fe3b0,transparent 68%);opacity:.5}
+.hero.on .orb-ring{border-color:rgba(95,227,176,.4)}
+.hero.on .orb-ring::after{background:var(--ok);box-shadow:0 0 14px var(--ok)}
+.state{text-align:center}
+.state b{display:block;font-size:15px}
+.state span{color:var(--muted);font-size:12px}
+.hero-right{display:flex;flex-direction:column;gap:10px}
+.svc{
+  display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px;padding:13px 14px;
+  border-radius:13px;border:1px solid var(--line);background:rgba(255,255,255,.025)
+}
+.svc .ico{
+  width:38px;height:38px;border-radius:11px;display:grid;place-items:center;
+  background:linear-gradient(135deg,rgba(185,162,255,.22),rgba(255,159,203,.14));
+  border:1px solid rgba(185,162,255,.24)
+}
+.svc .ico svg{width:18px;height:18px;stroke:var(--a1);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.svc b{font-size:13.5px;display:flex;align-items:center;gap:8px}
+.svc b .chip{align-self:center;white-space:nowrap}
+.svc .meta{color:var(--muted);font-size:11.5px;margin-top:2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
+.chip{
+  font-size:10.5px;padding:2px 7px;border-radius:6px;font-family:var(--mono);letter-spacing:.3px;
+  background:rgba(255,255,255,.06);color:var(--muted);font-weight:500
+}
+.chip.on{background:rgba(95,227,176,.16);color:#97f0cf}
+.chip.acc{background:rgba(185,162,255,.18);color:#d8c9ff}
+.chip.ok{background:rgba(95,227,176,.16);color:#97f0cf}
+.chip.warn{background:rgba(255,207,122,.16);color:#ffdfa6}
+.chip.bad{background:rgba(255,122,138,.16);color:#ffb3bb}
+.diag .d .chip{margin-top:6px;display:inline-block}
+.svc .foot{grid-column:1/-1;display:flex;gap:7px;flex-wrap:wrap;padding-top:2px}
+.svc .foot .btn{flex:1 1 auto;justify-content:center;min-width:128px;min-height:34px}
+
+/* toggle */
+.tgl{
+  width:44px;height:24px;border-radius:100px;background:rgba(255,255,255,.1);position:relative;
+  border:1px solid var(--line);transition:.2s;flex:0 0 44px
+}
+.tgl::after{
+  content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;
+  background:#b7b2c9;transition:.2s
+}
+.tgl.on{background:linear-gradient(135deg,var(--a1),var(--a2));border-color:transparent}
+.tgl.on::after{left:22px;background:#151022}
+.tgl.small{width:38px;height:21px;flex-basis:38px}
+.tgl.small::after{width:15px;height:15px}
+.tgl.small.on::after{left:20px}
+
+/* ---------- targets ---------- */
+.sec-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:20px 0 10px}
+.sec-head h3{margin:0;font-size:14px;font-weight:600}
+.targets{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px}
+.tg-item{
+  padding:11px 13px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.025);
+  display:flex;flex-direction:column;gap:5px;transition:.2s
+}
+.tg-item .t{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:500}
+.tg-item .t span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tg-item .s{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.tg-item.ok{border-color:rgba(95,227,176,.32);background:rgba(95,227,176,.06)}
+.tg-item.bad{border-color:rgba(255,122,138,.3);background:rgba(255,122,138,.06)}
+.tg-item.pending{opacity:.75}
+.tg-item.pending .dot{animation:pulse 1s infinite}
+@keyframes pulse{50%{opacity:.25}}
+.hosts{margin-top:10px;display:flex;flex-wrap:wrap;gap:6px}
+.hosts .h{
+  font-family:var(--mono);font-size:11px;padding:4px 9px;border-radius:8px;border:1px solid var(--line);
+  color:var(--muted);display:flex;gap:7px;align-items:center
+}
+.hosts .h.ok{color:#97f0cf;border-color:rgba(95,227,176,.28)}
+.hosts .h.bad{color:#ffb3bd;border-color:rgba(255,122,138,.28)}
+
+/* ring */
+.score-wrap{position:relative;width:78px;height:78px;flex:0 0 78px;display:grid;place-items:center}
+.score-ring{position:absolute;inset:0;border-radius:50%;
+  background:conic-gradient(var(--a1) calc(var(--v,0) * 1%),rgba(255,255,255,.07) 0);
+  mask:radial-gradient(farthest-side,transparent 66%,#000 68%);
+  -webkit-mask:radial-gradient(farthest-side,transparent 66%,#000 68%);transition:.5s}
+.score-wrap>span{font-family:var(--mono);font-size:15px;font-weight:600}
+.strat-big{font-size:17px;font-weight:600;letter-spacing:.2px}
+
+/* events */
+.events{display:flex;flex-direction:column;gap:2px;margin-top:10px;max-height:190px;overflow-y:auto}
+.ev{display:flex;gap:10px;padding:7px 4px;border-bottom:1px solid rgba(185,162,255,.07);font-size:12.5px}
+.ev:last-child{border:0}
+.ev time{color:var(--dim);font-family:var(--mono);font-size:11px;flex:0 0 48px;padding-top:1px}
+.ev span{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ev.err span{color:#ffb3bd}
+
+/* ---------- tabs ---------- */
+.tabs{display:flex;gap:4px;margin:16px 0 14px;padding:4px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.025);overflow-x:auto}
+.tabs button{
+  display:flex;align-items:center;gap:7px;padding:7px 13px;border-radius:9px;font-size:12.5px;color:var(--muted);
+  white-space:nowrap;transition:.16s
+}
+.tabs button i{display:grid;place-items:center}
+.tabs button svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.tabs button:hover{color:var(--txt)}
+.tabs button.on{background:rgba(185,162,255,.18);color:#fff}
+.pane{display:none}
+.pane.on{display:block;animation:fade .2s ease}
+
+/* ---------- inputs ---------- */
+.input{
+  width:100%;padding:8px 11px;border-radius:10px;border:1px solid var(--line);
+  background:rgba(8,7,15,.6);color:var(--txt);font-size:13px;outline:none;transition:.16s
+}
+.input:focus{border-color:rgba(185,162,255,.55);box-shadow:0 0 0 3px rgba(185,162,255,.12)}
+.input.mono{font-family:var(--mono);font-size:12.5px}
+textarea.input{min-height:190px;resize:vertical;line-height:1.55}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-size:12px;color:var(--muted)}
+.input-wrap{position:relative;display:flex;align-items:center}
+.input-wrap .input{padding-right:76px}
+.input-wrap .acts{position:absolute;right:5px;display:flex;gap:2px}
+.input-wrap .acts button{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;color:var(--muted)}
+.input-wrap .acts button:hover{color:var(--txt);background:rgba(185,162,255,.14)}
+.input-wrap .acts svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.search{position:relative;flex:1;min-width:170px;max-width:320px}
+.search input{padding-left:32px}
+.search svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);width:15px;height:15px;stroke:var(--muted);fill:none;stroke-width:1.8}
+select.input{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);
+  background-position:calc(100% - 15px) 50%,calc(100% - 10px) 50%;background-size:5px 5px;background-repeat:no-repeat;padding-right:28px}
+.seg{display:inline-flex;padding:3px;border-radius:10px;border:1px solid var(--line);background:rgba(255,255,255,.025);gap:2px}
+.seg button{padding:5px 11px;border-radius:8px;font-size:12px;color:var(--muted);transition:.16s}
+.seg button.on{background:rgba(185,162,255,.2);color:#fff}
+.seg button:hover{color:var(--txt)}
+
+/* options */
+.opts{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+@media(max-width:1000px){.opts{grid-template-columns:1fr 1fr}}
+.opt{
+  text-align:left;padding:12px 13px;border-radius:12px;border:1px solid var(--line);
+  background:rgba(255,255,255,.025);transition:.18s;display:flex;flex-direction:column;gap:4px
+}
+.opt b{font-size:13px;display:flex;align-items:center;gap:8px;font-weight:500}
+.opt span{font-size:11.5px;color:var(--muted);line-height:1.4}
+.opt .rd{width:14px;height:14px;border-radius:50%;border:1.5px solid var(--muted);flex:0 0 14px;position:relative}
+.opt:hover{border-color:var(--line2);background:rgba(185,162,255,.07)}
+.opt.on{border-color:rgba(185,162,255,.55);background:linear-gradient(135deg,rgba(185,162,255,.16),rgba(255,159,203,.06))}
+.opt.on .rd{border-color:var(--a1);box-shadow:0 0 0 3px rgba(185,162,255,.18)}
+.opt.on .rd::after{content:"";position:absolute;inset:3px;border-radius:50%;background:var(--a1)}
+
+/* kv */
+.kv{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.kv>div{padding:10px 12px;border-radius:11px;border:1px solid var(--line);background:rgba(255,255,255,.022);min-width:0}
+.kv small{display:block;color:var(--dim);font-size:11px;letter-spacing:.4px;text-transform:uppercase;margin-bottom:3px}
+.kv b{font-size:14px;font-weight:600;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* strategies grid */
+.sgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(268px,1fr));gap:11px}
+.stg{
+  padding:13px 14px;border-radius:13px;border:1px solid var(--line);background:rgba(255,255,255,.025);
+  transition:.18s;display:flex;flex-direction:column;gap:8px;text-align:left;position:relative;overflow:hidden
+}
+.stg:hover{border-color:var(--line2);background:rgba(185,162,255,.07);transform:translateY(-1px)}
+.stg.on{border-color:rgba(185,162,255,.6);background:linear-gradient(135deg,rgba(185,162,255,.16),rgba(255,159,203,.05))}
+.stg .top{display:flex;align-items:center;gap:9px}
+.stg .nm{font-size:13.5px;font-weight:600;letter-spacing:.15px}
+.stg .tag{
+  margin-left:auto;font-size:10px;padding:2px 7px;border-radius:6px;font-family:var(--mono);
+  background:rgba(255,255,255,.06);color:var(--muted)
+}
+.stg .note{font-size:11.5px;color:var(--muted);line-height:1.5}
+.stg .feats{display:flex;gap:5px;flex-wrap:wrap}
+.stg .f{font-size:10.5px;padding:2px 7px;border-radius:6px;background:rgba(185,162,255,.1);color:#c9bcf3;font-family:var(--mono)}
+.stg .badge-score{
+  position:absolute;top:0;right:0;font-size:10.5px;font-family:var(--mono);padding:3px 9px;
+  border-radius:0 0 0 10px;background:rgba(95,227,176,.18);color:#97f0cf
+}
+.stg .badge-score.weak{background:rgba(255,207,122,.18);color:#ffe0a5}
+.stg .badge-score.bad{background:rgba(255,122,138,.18);color:#ffb3bd}
+.stg .go{margin-left:auto;font-size:11px;color:var(--a1)}
+
+/* checklist */
+.checklist{display:flex;flex-direction:column;gap:3px;max-height:330px;overflow-y:auto;padding-right:4px}
+.check{
+  display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:9px;font-size:12.5px;
+  border:1px solid transparent;transition:.14s;cursor:pointer
+}
+.check:hover{background:rgba(185,162,255,.07)}
+.check .box{
+  width:15px;height:15px;border-radius:5px;border:1.5px solid var(--muted);flex:0 0 15px;display:grid;place-items:center;transition:.14s
+}
+.check .box svg{width:10px;height:10px;stroke:#151022;fill:none;stroke-width:3;opacity:0}
+.check.on .box{background:linear-gradient(135deg,var(--a1),var(--a2));border-color:transparent}
+.check.on .box svg{opacity:1}
+.check.cur{border-color:rgba(185,162,255,.5);background:rgba(185,162,255,.1)}
+.check .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.check .sc{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--muted)}
+
+/* progress */
+.prog{height:6px;border-radius:100px;background:rgba(255,255,255,.08);overflow:hidden}
+.prog i{display:block;height:100%;width:0;border-radius:100px;transition:width .3s ease;
+  background:linear-gradient(90deg,var(--a1),var(--a2));box-shadow:0 0 16px rgba(185,162,255,.6)}
+.banner{
+  display:flex;align-items:center;gap:13px;padding:14px 16px;border-radius:13px;
+  border:1px solid rgba(95,227,176,.34);background:linear-gradient(135deg,rgba(95,227,176,.14),rgba(95,227,176,.04))
+}
+.banner .ico{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;background:rgba(95,227,176,.16)}
+.banner .ico svg{width:19px;height:19px;stroke:var(--ok);fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.banner .ico i svg{width:19px;height:19px;stroke:currentColor}
+.banner b{font-size:13.5px}
+.banner .sub, .banner div>div{font-size:12px;color:var(--muted);margin-top:2px}
+
+/* table */
+.tbl-wrap{border:1px solid var(--line);border-radius:12px;overflow:hidden;min-height:120px}
+table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
+table.tbl th{
+  text-align:left;padding:9px 12px;font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:var(--dim);
+  background:rgba(255,255,255,.03);font-weight:500;border-bottom:1px solid var(--line)
+}
+table.tbl td{padding:9px 12px;border-bottom:1px solid rgba(185,162,255,.06)}
+table.tbl tr:last-child td{border:0}
+table.tbl tr:hover td{background:rgba(185,162,255,.05)}
+table.tbl .num{font-family:var(--mono);text-align:right;white-space:nowrap}
+.mini-bar{height:5px;border-radius:100px;background:rgba(255,255,255,.08);overflow:hidden;min-width:52px}
+.mini-bar i{display:block;height:100%;background:linear-gradient(90deg,var(--a1),var(--a2))}
+.empty{padding:26px;text-align:center;color:var(--dim);font-size:12.5px}
+
+/* tg page */
+.tg-grid{display:grid;grid-template-columns:1.35fr 1fr;gap:14px}
+@media(max-width:1080px){.tg-grid{grid-template-columns:1fr}}
+.tg-top{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
+.dc{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(185,162,255,.07);font-size:12.5px}
+.dc:last-child{border:0}
+.dc .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dc .ip{font-family:var(--mono);font-size:11px;color:var(--dim)}
+.dc .ms{font-family:var(--mono);font-size:11.5px;color:var(--muted);min-width:56px;text-align:right}
+.dc .ms.good{color:#97f0cf}
+.dc .ms.bad{color:#ffb3bd}
+
+/* settings */
+.set{display:flex;align-items:center;gap:14px;padding:11px 0;border-bottom:1px solid rgba(185,162,255,.07)}
+.set:last-child{border:0}
+.set .t{flex:1;min-width:0}
+.set .t b{font-weight:500;font-size:13px;display:block}
+.set .t span{font-size:11.5px;color:var(--muted);display:block;margin-top:2px;line-height:1.4}
+.swatches{display:flex;gap:8px}
+.sw{width:26px;height:26px;border-radius:9px;border:2px solid transparent;transition:.16s}
+.sw.on{border-color:#fff;box-shadow:0 0 0 3px rgba(185,162,255,.25)}
+.sw:hover{transform:scale(1.08)}
+
+/* about */
+.about-hero{display:flex;gap:18px;align-items:center}
+.about-hero .mark{width:64px;height:64px;border-radius:20px;font-size:32px}
+.about-hero h2{margin:0;font-size:20px}
+
+/* changelog */
+.changelog{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:11px}
+.changelog li{display:flex;gap:12px;font-size:12.5px;line-height:1.5}
+.changelog code{
+  font-family:var(--mono);font-size:11px;padding:2px 8px;border-radius:6px;height:fit-content;
+  background:rgba(185,162,255,.14);color:#d8c9ff
+}
+.changelog span{color:var(--muted)}
+
+/* console */
+.logbox{
+  border:1px solid var(--line);border-radius:12px;background:rgba(6,5,12,.75);
+  font-family:var(--mono);font-size:12px;height:calc(100vh - 230px);overflow-y:auto;padding:10px 4px
+}
+.logline{display:flex;gap:10px;padding:2px 10px;line-height:1.6;border-radius:6px}
+.logline:hover{background:rgba(185,162,255,.06)}
+.logline time{color:#4d4961;flex:0 0 62px}
+.logline .src{flex:0 0 54px;font-size:10.5px;padding-top:2px}
+.logline .src.APP{color:#9fb7ff}.logline .src.ZAPRET{color:#ffcf7a}.logline .src.TG{color:#7ee8c4}
+.logline .src.TEST{color:#b9a2ff}.logline .src.NET{color:#7cc4ff}.logline .src.UPD{color:#ff9fcb}
+.logline .src.ERR{color:#ff7a8a}.logline .src.ERR,.logline.err .msg{color:#ffb3bd}
+.logline .msg{flex:1;word-break:break-word;color:#cfcadd}
+
+/* component rows */
+.comp{
+  display:flex;align-items:center;gap:13px;padding:13px;border-radius:12px;border:1px solid var(--line);
+  background:rgba(255,255,255,.025)
+}
+.comp+.comp{margin-top:9px}
+.comp .ico{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;background:rgba(185,162,255,.13)}
+.comp .ico svg{width:18px;height:18px;stroke:var(--a1);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.comp .info{flex:1 1 260px;min-width:0}
+.comp .info b{font-size:13.5px;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.comp .info span{font-size:11.5px;color:var(--muted);display:block;margin-top:2px;word-break:break-all}
+.comp .ver{font-family:var(--mono);font-size:11.5px;color:var(--muted);text-align:right;white-space:nowrap;min-width:112px}
+.comp .ver b{display:block;color:var(--txt);font-size:12.5px}
+
+/* diag */
+.diag{display:flex;gap:12px;align-items:flex-start;padding:11px 0;border-bottom:1px solid rgba(185,162,255,.07)}
+.diag:last-child{border:0}
+.diag .st{width:9px;height:9px;border-radius:50%;margin-top:5px;flex:0 0 9px}
+.diag .st.ok{background:var(--ok);box-shadow:0 0 9px rgba(95,227,176,.65)}
+.diag .st.warn{background:var(--warn);box-shadow:0 0 9px rgba(255,207,122,.6)}
+.diag .st.bad{background:var(--bad);box-shadow:0 0 9px rgba(255,122,138,.6)}
+.diag .d{flex:1}
+.diag .d b{font-size:13px;font-weight:500;display:block}
+.diag .d span{font-size:11.5px;color:var(--muted);display:block;margin-top:2px}
+.diag .d .hint{color:#c9bcf3;font-size:11.5px;margin-top:3px}
+
+/* toast */
+.toasts{position:fixed;bottom:14px;right:16px;display:flex;flex-direction:column;gap:8px;z-index:100;pointer-events:none;max-width:340px}
+.toast{
+  min-width:220px;max-width:340px;padding:10px 13px;padding:12px 15px;border-radius:12px;font-size:12.5px;
+  background:rgba(26,23,42,.97);border:1px solid var(--line2);box-shadow:var(--shadow);
+  display:flex;gap:9px;align-items:flex-start;animation:slidein .22s ease;pointer-events:auto
+}
+@keyframes slidein{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:none}}
+.toast.out{animation:slideout .2s ease forwards}
+@keyframes slideout{to{opacity:0;transform:translateX(20px)}}
+.toast .tic{width:18px;height:18px;flex:0 0 18px;margin-top:1px}
+.toast .tic svg{width:18px;height:18px;stroke:var(--ok);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.toast.err{border-color:rgba(255,122,138,.4)}
+.toast.err .tic svg{stroke:var(--bad)}
+.toast.warn{border-color:rgba(255,207,122,.4)}
+.toast.warn .tic svg{stroke:var(--warn)}
+.toast b{display:block;font-size:12.5px;margin-bottom:2px}
+.toast div{color:var(--muted);font-size:11.5px;line-height:1.4;word-break:break-word;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+
+/* modal */
+.modal-bg{
+  position:fixed;inset:0;background:rgba(4,3,10,.72);backdrop-filter:blur(4px);z-index:200;
+  display:none;place-items:center;padding:24px
+}
+.modal-bg.on{display:grid}
+.modal{
+  width:min(560px,100%);max-height:80vh;overflow:auto;border-radius:18px;border:1px solid var(--line2);
+  background:linear-gradient(180deg,#141220,#0d0b16);padding:22px;box-shadow:var(--shadow)
+}
+.modal h3{margin:0 0 6px;font-size:16px}
+.modal p{color:var(--muted);font-size:12.5px;margin:0 0 14px;line-height:1.5}
+.modal .foot{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
+.notes{font-family:var(--mono);font-size:11.5px;line-height:1.65;color:#cfcadd;white-space:pre-wrap;max-height:44vh;overflow:auto;
+  background:rgba(6,5,12,.6);border:1px solid var(--line);border-radius:10px;padding:12px}
+
+.spinner{
+  width:15px;height:15px;border-radius:50%;border:2px solid rgba(255,255,255,.2);
+  border-top-color:#fff;animation:spin .7s linear infinite;display:inline-block
+}
+.btn.loading{pointer-events:none;opacity:.75}
+.pulse-track{height:3px;border-radius:100px;background:rgba(255,255,255,.08);overflow:hidden}
+.pulse-track i{display:block;height:100%;width:38%;border-radius:100px;background:linear-gradient(90deg,transparent,var(--a1),transparent);animation:sweep 1.4s infinite}
+@keyframes sweep{from{transform:translateX(-100%)}to{transform:translateX(360%)}}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="titlebar">
+    <div class="mini-logo">夢</div>
+    <span>Yume Haze Zapret</span><span class="ver" id="tbVer">2.1.0</span>
+    <div class="wctl" id="wctl"><span data-w="min">&#8212;</span><span data-w="max">&#9633;</span><span data-w="close">&#10005;</span></div>
+  </div>
+
+  <div class="shell">
+    <div class="haze"></div>
+
+    <!-- SIDEBAR -->
+    <aside class="side">
+      <div class="brand">
+        <div class="mark">夢</div>
+        <div><b>Yume Haze</b><small>Zapret</small></div>
+      </div>
+      <div class="nav-label">Управление</div>
+      <nav class="nav" id="nav">
+        <button data-go="overview" class="on"><i data-i="home"></i><span>Обзор</span></button>
+        <button data-go="zapret"><i data-i="bolt"></i><span>Zapret</span></button>
+        <button data-go="tg"><i data-i="send"></i><span>TG WS Proxy</span></button>
+      </nav>
+      <div class="nav-label" style="margin-top:14px">Инструменты</div>
+      <nav class="nav">
+        <button data-go="tests"><i data-i="pulse"></i><span>Тесты</span></button>
+        <button data-go="updates"><i data-i="download"></i><span>Обновления</span><em class="badge" id="updBadge" hidden>0</em></button>
+        <button data-go="console"><i data-i="terminal"></i><span>Журнал</span></button>
+      </nav>
+      <div class="side-status">
+        <div><i class="dot" id="sdZ"></i>Zapret<em id="sdZt">—</em></div>
+        <div><i class="dot" id="sdT"></i>TG WS Proxy<em id="sdTt">—</em></div>
+      </div>
+      <nav class="nav">
+        <button data-go="settings"><i data-i="gear"></i><span>Настройки</span></button>
+        <button data-go="about"><i data-i="info"></i><span>О программе</span></button>
+      </nav>
+    </aside>
+
+    <!-- MAIN -->
+    <main class="main" id="main">
+      <div class="wrap">
+        <header class="phead">
+          <div><h1 id="pTitle">Обзор</h1><p id="pSub">Состояние обхода и прокси</p></div>
+          <div class="pills">
+            <span class="pill"><i class="dot" id="hpZ"></i><span id="hpZt">Zapret</span></span>
+            <span class="pill"><i class="dot" id="hpT"></i><span id="hpTt">TG WS Proxy</span></span>
+          </div>
+        </header>
+        <div id="adminBanner" hidden style="margin:14px 30px -2px">
+          <div class="banner" style="border-color:rgba(255,207,122,.42);background:rgba(255,207,122,.09)">
+            <div class="ico" style="background:rgba(255,207,122,.16)"><i data-i="shield" style="display:grid"></i></div>
+            <div style="flex:1">
+              <b>Нужны права администратора</b>
+              <div>Без них winws.exe не загрузит драйвер WinDivert: Windows выдаст звук ошибки, а обход не запустится.</div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <button class="btn sm" data-act="elevate" style="background:linear-gradient(135deg,#ffcf7a,#ffb1d4);color:#251a2b;border:0;font-weight:600">Перезапустить с правами</button>
+              <button class="btn ghost sm" data-act="dismissAdmin">Позже</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ============ OVERVIEW ============ -->
+        <section class="page on" id="p-overview">
+          <div class="card hero" id="hero">
+            <div class="hero-left">
+              <div class="orb">
+                <div class="orb-glow"></div>
+                <div class="orb-ring"></div>
+                <button class="orb-core" id="orbBtn" title="Включить / выключить всё"><i data-i="power"></i></button>
+              </div>
+              <div class="state"><b id="stateLabel">Защита выключена</b><span id="stateSub">—</span></div>
+            </div>
+            <div class="hero-right">
+              <div class="svc" id="svcZ">
+                <div class="ico"><i data-i="bolt"></i></div>
+                <div style="min-width:0"><b>Zapret <span class="chip" id="svcZchip">—</span></b><div class="meta" id="svcZmeta">—</div></div>
+                <button class="tgl" data-toggle-svc="z" aria-label="Zapret"></button>
+                <div class="foot">
+                  <button class="btn sm ghost" data-act="restartZ"><i data-i="refresh"></i>Перезапуск</button>
+                  <button class="btn sm ghost" data-go="zapret" data-tabgo="z:strat"><i data-i="list"></i>Стратегии</button>
+                  <button class="btn sm ghost" data-go="zapret" data-tabgo="z:game"><i data-i="game"></i>Игровой фильтр</button>
+                </div>
+              </div>
+              <div class="svc" id="svcT">
+                <div class="ico"><i data-i="send"></i></div>
+                <div style="min-width:0"><b>TG WS Proxy <span class="chip" id="svcTchip">—</span></b><div class="meta" id="svcTmeta">—</div></div>
+                <button class="tgl" data-toggle-svc="t" aria-label="TG WS Proxy"></button>
+                <div class="foot">
+                  <button class="btn sm ghost" data-act="tgConnect"><i data-i="send"></i>Открыть в Telegram</button>
+                  <button class="btn sm ghost" data-act="copyLink"><i data-i="copy"></i>Ссылка</button>
+                  <button class="btn sm ghost" data-go="tg"><i data-i="gear"></i>Параметры</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="sec-head"><h3>Доступность сервисов</h3><button class="btn sm" data-act="quick"><i data-i="pulse"></i>Проверить</button></div>
+          <div class="targets" id="ovTargets"></div>
+
+          <div class="grid-2 mt">
+            <div class="card">
+              <div class="between"><div><h3>Текущая стратегия</h3><div class="sub">Используется службой Zapret</div></div><span class="chip acc" id="ovBestTag">—</span></div>
+              <div class="row mt">
+                <div class="score-wrap"><div class="score-ring" id="ovRing"></div><span id="ovRingTxt">—</span></div>
+                <div style="min-width:0"><div class="strat-big" id="ovStrat">—</div><div class="muted" style="font-size:12.5px" id="ovStratSub">—</div></div>
+              </div>
+              <div class="btns mt">
+                <button class="btn sm" data-go="zapret" data-tabgo="z:strat"><i data-i="list"></i>Сменить</button>
+                <button class="btn sm pri" data-act="autoPick"><i data-i="spark"></i>Подобрать лучшую</button>
+              </div>
+            </div>
+            <div class="card">
+              <div class="between"><div><h3>Последние события</h3><div class="sub">Из журнала приложения</div></div><button class="btn sm ghost" data-go="console">Журнал →</button></div>
+              <div class="events" id="ovEvents"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ ZAPRET ============ -->
+        <section class="page" id="p-zapret">
+          <div class="card">
+            <div class="row" style="flex-wrap:wrap">
+              <div class="svc" style="border:0;background:none;padding:0;flex:1;min-width:260px" id="zHeadSvc">
+                <div class="ico"><i data-i="bolt"></i></div>
+                <div style="min-width:0"><b>Служба Zapret <span class="chip" id="zChip">—</span></b><div class="meta" id="zMeta">—</div></div>
+                <button class="tgl" data-toggle-svc="z" aria-label="Zapret"></button>
+              </div>
+            </div>
+            <div class="kv mt">
+              <div><small>Процесс</small><b id="zProc">winws.exe</b></div>
+              <div><small>Время работы</small><b id="zUp">—</b></div>
+              <div><small>Стратегия</small><b id="zStratKv" style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">—</b></div>
+            </div>
+            <div class="btns mt">
+              <button class="btn sm" data-act="restartZ"><i data-i="refresh"></i>Перезапустить</button>
+              <button class="btn sm" data-act="installSvc"><i data-i="shield"></i>Установить службу</button>
+              <button class="btn sm" data-act="removeSvc"><i data-i="x"></i>Удалить службу</button>
+              <button class="btn sm" data-act="fixDiscord"><i data-i="spark"></i>Очистить кэш Discord</button>
+            </div>
+          </div>
+
+          <div class="tabs" data-tabs="z">
+            <button data-tab="strat" class="on"><i data-i="list"></i>Стратегии</button>
+            <button data-tab="game"><i data-i="game"></i>Игровой фильтр</button>
+            <button data-tab="ipset"><i data-i="shield"></i>IPset</button>
+            <button data-tab="lists"><i data-i="link"></i>Списки доменов</button>
+            <button data-tab="driver"><i data-i="chip"></i>Драйвер</button>
+          </div>
+
+          <div class="pane on" data-group="z" data-pane="strat">
+            <div class="row" style="flex-wrap:wrap;margin-bottom:14px">
+              <div class="search"><i data-i="search"></i><input class="input" id="stratSearch" placeholder="Поиск стратегии…"></div>
+              <div class="seg" data-seg="sfilter"><button data-v="all" class="on">Все</button><button data-v="good">Рабочие</button><button data-v="weak">Слабые</button></div>
+              <button class="btn" data-act="autoPick"><i data-i="spark"></i>Подобрать</button>
+            </div>
+            <div class="sgrid" id="stratGrid"></div>
+          </div>
+
+          <div class="pane" data-group="z" data-pane="game">
+            <div class="card">
+              <h3>Игровой фильтр</h3>
+              <div class="sub">Расширяет обход на игровые порты. Нужен для голосовых чатов и игр, которые работают через UDP.</div>
+              <div class="opts mt" data-opts="game">
+                <button class="opt" data-v="off"><b><i class="rd"></i>Выключен</b><span>Только веб-трафик (80, 443)</span></button>
+                <button class="opt" data-v="tcp"><b><i class="rd"></i>TCP</b><span>Порты 1024–65535 по TCP</span></button>
+                <button class="opt" data-v="udp"><b><i class="rd"></i>UDP</b><span>Порты 1024–65535 по UDP</span></button>
+                <button class="opt" data-v="all"><b><i class="rd"></i>TCP + UDP</b><span>Максимальное покрытие</span></button>
+              </div>
+              <hr class="sep">
+              <div class="grid-2">
+                <div class="field"><label>Диапазон TCP</label><input class="input mono" id="gTcp" value="1024-65535"></div>
+                <div class="field"><label>Диапазон UDP</label><input class="input mono" id="gUdp" value="1024-65535"></div>
+              </div>
+              <div class="between mt">
+                <span class="muted" style="font-size:12.5px" id="gameNote">—</span>
+                <button class="btn pri sm" data-act="applyGame">Применить и перезапустить</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="pane" data-group="z" data-pane="ipset">
+            <div class="card">
+              <h3>Режим IPset</h3>
+              <div class="sub">Определяет, к каким IP-адресам применяется обход помимо доменных списков.</div>
+              <div class="opts mt" style="grid-template-columns:repeat(3,1fr)" data-opts="ipset">
+                <button class="opt" data-v="loaded"><b><i class="rd"></i>По списку</b><span>Только адреса из ipset-all.txt</span></button>
+                <button class="opt" data-v="any"><b><i class="rd"></i>Любой IP</b><span>Обход для всех адресов</span></button>
+                <button class="opt" data-v="none"><b><i class="rd"></i>Выключен</b><span>Только доменные списки</span></button>
+              </div>
+              <hr class="sep">
+              <div class="kv">
+                <div><small>Файл</small><b style="font-size:13px">ipset-all.txt</b></div>
+                <div><small>Записей</small><b id="ipCount">—</b></div>
+                <div><small>Обновлён</small><b id="ipDate" style="font-size:13px">—</b></div>
+              </div>
+              <div class="btns mt">
+                <button class="btn sm" data-act="updIpset"><i data-i="download"></i>Обновить список</button>
+                <button class="btn sm ghost" data-tabgo="z:lists" data-listgo="ipExclude"><i data-i="list"></i>Исключения IP</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="pane" data-group="z" data-pane="lists">
+            <div class="card">
+              <div class="between" style="flex-wrap:wrap">
+                <div><h3>Пользовательские списки</h3><div class="sub">Один домен или адрес на строку. Строки с # — комментарии.</div></div>
+                <div class="seg" data-seg="list"><button data-v="user" class="on">Свои сайты</button><button data-v="exclude">Исключения</button><button data-v="ipExclude">Исключения IP</button></div>
+              </div>
+              <div class="mt"><textarea class="input" id="listArea" spellcheck="false"></textarea></div>
+              <div class="between mt">
+                <span class="muted mono" style="font-size:12px" id="listInfo">—</span>
+                <div class="btns"><button class="btn sm ghost" data-act="listReset">Сбросить</button><button class="btn sm pri" data-act="listSave">Сохранить</button></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="pane" data-group="z" data-pane="driver">
+            <div class="card">
+              <div class="row" style="align-items:flex-start">
+                <div style="flex:1">
+                  <h3>Драйвер WinDivert</h3>
+                  <div class="sub">Драйвер WinDivert (WinDivert64.sys + WinDivert.dll) входит в архив Zapret от Flowseal — приложение его не ставит и не подменяет. Загружает драйвер сам winws.exe при запуске стратегии, отдельная служба ему не нужна. Если Windows не даёт загрузить драйвер (ошибка 123, «неправильный синтаксис имени файла»), нажмите «Убрать службу и перезапустить».</div>
+                </div>
+                <div class="row" style="gap:8px;flex-wrap:wrap">
+                  <button class="btn sm" data-act="startTest"><i data-i="play"></i>Проверить запуск</button>
+                  <button class="btn sm" data-act="drvCheck"><i data-i="refresh"></i>Обновить</button>
+                  <button class="btn sm pri" data-act="drvTest"><i data-i="shield"></i>Проверить драйвер</button>
+                </div>
+              </div>
+              <div id="drvInfo" class="mt"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ TG WS PROXY ============ -->
+        <section class="page" id="p-tg">
+          <div class="tg-grid">
+            <div class="card">
+              <div class="svc" style="border:0;background:none;padding:0" id="tHeadSvc">
+                <div class="ico"><i data-i="send"></i></div>
+                <div style="min-width:0"><b>TG WS Proxy <span class="chip" id="tChip">—</span></b><div class="meta">MTProto через WebSocket · локальный прокси</div></div>
+                <button class="tgl" data-toggle-svc="t" aria-label="TG WS Proxy"></button>
+              </div>
+              <hr class="sep">
+              <div class="tg-top">
+                <div style="flex:1;min-width:0" class="stack">
+                  <div class="field"><label>Ссылка подключения</label>
+                    <div class="input-wrap"><input class="input mono" id="tgLink" readonly style="font-size:12px">
+                      <div class="acts"><button data-act="copyLink" title="Копировать"><i data-i="copy"></i></button><button data-act="newSecret" title="Новый секрет"><i data-i="refresh"></i></button></div>
+                    </div>
+                  </div>
+                  <div class="btns">
+                    <button class="btn pri" data-act="tgConnect"><i data-i="send"></i>Подключить в Telegram</button>
+                    <button class="btn" data-act="copyLink"><i data-i="copy"></i>Копировать</button>
+                  </div>
+                  <div class="muted" style="font-size:12px">Секрет хранится только на этом устройстве.</div>
+                </div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="between"><div><h3>Статистика</h3><div class="sub">Текущая сессия</div></div><span class="chip" id="tgUp">—</span></div>
+              <div class="kv mt" style="grid-template-columns:1fr 1fr">
+                <div><small>Соединений</small><b id="tgConn">0</b></div>
+                <div><small>Пул WebSocket</small><b id="tgPool">—</b></div>
+                <div><small>Принято</small><b id="tgRx">0 МБ</b></div>
+                <div><small>Отправлено</small><b id="tgTx">0 МБ</b></div>
+              </div>
+              <div class="sec-head" style="margin:18px 0 4px"><h3>Дата-центры Telegram</h3><button class="btn sm ghost" data-act="pingDc"><i data-i="refresh"></i>Пинг</button></div>
+              <div id="dcList"></div>
+            </div>
+          </div>
+
+          <div class="card mt">
+            <div class="between"><div><h3>Параметры прокси</h3><div class="sub">Изменения применяются после сохранения</div></div><button class="btn pri sm" data-act="tgSave">Сохранить</button></div>
+            <div class="grid-3 mt">
+              <div class="field"><label>Хост</label><input class="input mono" id="tgHost" value="127.0.0.1"></div>
+              <div class="field"><label>Порт</label><input class="input mono" id="tgPort" value="1443" type="number"></div>
+              <div class="field"><label>Размер пула</label><input class="input mono" id="tgPoolIn" value="4" type="number" min="0" max="16"></div>
+            </div>
+            <div class="grid-2 mt" style="grid-template-columns:minmax(240px,1fr) minmax(180px,.75fr)">
+              <div class="field"><label>Секрет</label>
+                <div class="input-wrap"><input class="input mono" id="tgSecret" type="password">
+                  <div class="acts"><button data-act="showSecret" title="Показать"><i data-i="eye"></i></button><button data-act="newSecret" title="Сгенерировать"><i data-i="refresh"></i></button></div>
+                </div>
+              </div>
+              <div class="field"><label>Fake TLS домен <span class="muted">(необязательно)</span></label><input class="input mono" id="tgTls" placeholder="cloudflare.com"></div>
+            </div>
+            <div class="mt">
+              <div class="set"><div class="t"><b>Cloudflare-прокси</b><span>Резервный маршрут через cfproxy, если прямой WebSocket недоступен</span></div><button class="tgl on" data-tgl="tg.cfproxy"></button></div>
+              <div class="set"><div class="t"><b>Мультиплексирование медиа (HTTP/2)</b><span>Медиа идёт через /api по одному соединению с Cloudflare</span></div><button class="tgl on" data-tgl="tg.h2"></button></div>
+              <div class="set"><div class="t"><b>Запускать вместе с приложением</b><span>Прокси поднимается сразу после старта Yume Haze</span></div><button class="tgl on" data-tgl="tg.autostartWithApp"></button></div>
+              <div class="set"><div class="t"><b>Подробный лог</b><span>Писать каждое соединение в журнал</span></div><button class="tgl" data-tgl="tg.verbose"></button></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ TESTS ============ -->
+        <section class="page" id="p-tests">
+          <div class="tabs" data-tabs="t" style="margin-top:0">
+            <button data-tab="quick" class="on"><i data-i="pulse"></i>Быстрый тест</button>
+            <button data-tab="pick"><i data-i="spark"></i>Подбор стратегии</button>
+            <button data-tab="hist"><i data-i="clock"></i>История</button>
+            <button data-tab="diag"><i data-i="shield"></i>Диагностика</button>
+          </div>
+
+          <div class="pane on" data-group="t" data-pane="quick">
+            <div class="card">
+              <div class="between" style="flex-wrap:wrap"><div><h3>Проверка доступности</h3><div class="sub">Discord, YouTube, Google и Cloudflare с текущей стратегией · <span class="mono" id="qtStrat">—</span></div></div><button class="btn pri" data-act="quick"><i data-i="play"></i>Запустить тест</button></div>
+              <div class="targets mt" id="qtTargets"></div>
+              <div class="hosts" id="qtHosts"></div>
+            </div>
+          </div>
+
+          <div class="pane" data-group="t" data-pane="pick">
+            <div class="card">
+              <div class="between" style="flex-wrap:wrap">
+                <div><h3>Автоподбор стратегии</h3><div class="sub">Каждая выбранная стратегия запускается и проверяется по очереди</div></div>
+                <div class="row" style="flex-wrap:wrap">
+                  <div class="seg" data-seg="pmode"><button data-v="fast" class="on">Быстрый · DS+YT</button><button data-v="full">Полный · 4 сервиса</button></div>
+                  <button class="btn pri" id="pickRun" data-act="pickRun"><i data-i="play"></i>Начать</button>
+                  <button class="btn" id="pickStop" data-act="pickStop" disabled><i data-i="stop"></i>Стоп</button>
+                </div>
+              </div>
+              <div class="mt">
+                <div class="between" style="font-size:12.5px;margin-bottom:6px"><span class="muted" id="pickLabel">Готово к запуску</span><span class="mono muted" id="pickPct">0%</span></div>
+                <div class="prog"><i id="pickBar"></i></div>
+              </div>
+              <div id="pickBanner" class="mt" hidden></div>
+              <div class="grid-2 mt" style="grid-template-columns:minmax(230px,.8fr) 1.4fr">
+                <div>
+                  <div class="between" style="margin-bottom:8px"><span class="muted" style="font-size:12px" id="pickSel">—</span><div class="btns"><button class="btn sm ghost" data-act="pickAll">Все</button><button class="btn sm ghost" data-act="pickNone">Сброс</button></div></div>
+                  <div class="checklist" id="pickList"></div>
+                </div>
+                <div>
+                  <div style="margin-bottom:8px;font-size:12px" class="muted">Результаты (по убыванию)</div>
+                  <div class="tbl-wrap" id="pickResults"><div class="empty">Запустите подбор — результаты появятся здесь</div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="pane" data-group="t" data-pane="hist">
+            <div class="card">
+              <div class="between"><div><h3>История тестов</h3><div class="sub">Можно вернуть любую ранее проверенную стратегию</div></div><button class="btn sm ghost" data-act="histClear">Очистить</button></div>
+              <div class="mt" id="histList"></div>
+            </div>
+          </div>
+
+          <div class="pane" data-group="t" data-pane="diag">
+            <div class="card">
+              <div class="between"><div><h3>Диагностика системы</h3><div class="sub">Поиск конфликтов, которые мешают работе обхода</div></div><button class="btn pri" data-act="diagRun"><i data-i="play"></i>Проверить</button></div>
+              <div class="mt" id="diagList"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ UPDATES ============ -->
+        <section class="page" id="p-updates">
+          <div class="card">
+            <div class="row" style="flex-wrap:wrap">
+              <div class="banner" style="flex:1;min-width:260px;border:0;background:none;padding:0">
+                <div class="ico"><i data-i="download"></i></div>
+                <div><h3 id="updTitle">Проверка обновлений</h3><div class="sub" id="updSub">Последняя проверка: —</div></div>
+              </div>
+              <div class="seg" data-seg="channel"><button data-v="stable" class="on">Стабильный</button><button data-v="beta">Бета</button></div>
+              <button class="btn" data-act="updCheck" id="updCheck"><i data-i="refresh"></i>Проверить</button>
+              <button class="btn pri" data-act="updAll" id="updAll"><i data-i="download"></i>Обновить всё</button>
+            </div>
+          </div>
+          <div class="card mt"><h3>Компоненты</h3><div class="mt" id="compList"></div></div>
+          <div class="grid-2 mt">
+            <div class="card">
+              <h3>Автообновление</h3>
+              <div class="mt">
+                <div class="set"><div class="t"><b>Проверять при запуске</b><span>И далее каждые 6 часов</span></div><button class="tgl on" data-tgl="app.autoUpdateCheck"></button></div>
+                <div class="set"><div class="t"><b>Устанавливать автоматически</b><span>Настройки и списки сохраняются</span></div><button class="tgl" data-tgl="app.autoInstall"></button></div>
+                <div class="set"><div class="t"><b>Через зеркало</b><span>Если GitHub недоступен напрямую</span></div><button class="tgl on" data-tgl="app.useMirror"></button></div>
+                <div class="set"><div class="t"><b>Автообновление списков zapret</b><span>service.bat check_updates (utils\check_updates.enabled)</span></div><button class="tgl on" data-tgl="zapret.checkUpdates"></button></div>
+              </div>
+            </div>
+            <div class="card">
+              <h3>Что нового</h3>
+              <ul class="changelog mt" id="changelog">
+                <li><code>1.10.4</code><span>Zapret: обновлён стандартный TLS-фейк в ALT11/ALT12/EXP/SIMPLE FAKE ALT2, новый IPset, детект Happ в диагностике.</span></li>
+                <li><code>v1.11.4</code><span>TG WS Proxy: стабильнее переподключение пула, HTTP/2 мультиплексирование медиа.</span></li>
+                <li><code>2.1.0</code><span>Yume Haze: автоподбор стратегий, игровой фильтр, IPset, диагностика, журнал.</span></li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ CONSOLE ============ -->
+        <section class="page" id="p-console">
+          <div class="row" style="flex-wrap:wrap;margin-bottom:12px">
+            <div class="seg" data-seg="logf"><button data-v="all" class="on">Все</button><button data-v="APP">APP</button><button data-v="ZAPRET">ZAPRET</button><button data-v="TG">TG</button><button data-v="TEST">TEST</button><button data-v="ERR">Ошибки</button></div>
+            <div class="search"><i data-i="search"></i><input class="input" id="logSearch" placeholder="Фильтр по тексту…"></div>
+            <button class="icon-btn" data-act="logCopy" title="Копировать"><i data-i="copy"></i></button>
+            <button class="icon-btn" data-act="logClear" title="Очистить"><i data-i="x"></i></button>
+          </div>
+          <div class="logbox" id="logBox"></div>
+        </section>
+
+        <!-- ============ SETTINGS ============ -->
+        <section class="page" id="p-settings">
+          <div class="grid-2">
+            <div class="card">
+              <h3>Общие</h3>
+              <div class="mt">
+                <div class="set"><div class="t"><b>Запуск вместе с Windows</b><span>Открывать Yume Haze при входе в систему</span></div><button class="tgl" data-tgl="app.runAtLogin"></button></div>
+                <div class="set"><div class="t"><b>Запускать свёрнутым</b><span>Сразу в трей, без окна</span></div><button class="tgl" data-tgl="app.startMinimized"></button></div>
+                <div class="set"><div class="t"><b>Закрытие в трей</b><span>Службы продолжают работать в фоне</span></div><button class="tgl on" data-tgl="app.closeToTray"></button></div>
+                <div class="set"><div class="t"><b>Уведомления</b><span>Сообщать о сбоях и обновлениях</span></div><button class="tgl on" data-tgl="app.notifications"></button></div>
+                <div class="set"><div class="t"><b>Тест при запуске</b><span>Быстрая проверка доступности после старта</span></div><button class="tgl" data-tgl="app.testOnStart"></button></div>
+                <div class="set"><div class="t"><b>Запускать Zapret и прокси при старте</b><span>Поднимать обход автоматически вместе с приложением</span></div><button class="tgl" data-tgl="app.autostartServices"></button></div>
+              </div>
+            </div>
+            <div class="card">
+              <h3>Интерфейс</h3>
+              <div class="mt">
+                <div class="set"><div class="t"><b>Акцентный цвет</b><span>Цвет кнопок и индикаторов</span></div>
+                  <div class="swatches" id="swatches">
+                    <button class="sw on" data-a="#b9a2ff,#ff9fcb" style="background:linear-gradient(135deg,#b9a2ff,#ff9fcb)"></button>
+                    <button class="sw" data-a="#7ee8c4,#7cc4ff" style="background:linear-gradient(135deg,#7ee8c4,#7cc4ff)"></button>
+                    <button class="sw" data-a="#ffcf7a,#ff8a7a" style="background:linear-gradient(135deg,#ffcf7a,#ff8a7a)"></button>
+                    <button class="sw" data-a="#dcdce6,#8f8fa3" style="background:linear-gradient(135deg,#dcdce6,#8f8fa3)"></button>
+                  </div>
+                </div>
+                <div class="set"><div class="t"><b>Язык</b><span>Язык интерфейса</span></div><select class="input" style="width:150px" disabled><option>Русский</option></select></div>
+                <div class="set"><div class="t"><b>Анимации</b><span>Вращение кольца и плавные переходы</span></div><button class="tgl on" data-tgl="app.animations"></button></div>
+              </div>
+              <hr class="sep">
+              <div class="between"><div><b style="font-weight:500">Сброс настроек</b><div class="muted" style="font-size:12.5px">Вернуть всё к значениям по умолчанию</div></div><button class="btn sm danger" data-act="reset">Сбросить</button></div>
+            </div>
+          </div>
+          <div class="card mt">
+            <h3>Пути</h3>
+            <div class="sub">Можно указать уже распакованный zapret или другой TgWsProxy.exe.</div>
+            <div class="grid-2 mt">
+              <div class="field"><label>Папка Zapret</label>
+                <div class="input-wrap"><input class="input mono" id="pathZ" readonly><div class="acts" style="padding-right:4px"><button data-act="pickZapretDir" title="Выбрать"><i data-i="folder"></i></button><button data-act="openZapretDir" title="Открыть"><i data-i="external"></i></button></div></div>
+                <span class="muted" style="font-size:11.5px" id="pathZState">—</span>
+              </div>
+              <div class="field"><label>TgWsProxy.exe</label>
+                <div class="input-wrap"><input class="input mono" id="pathT" readonly><div class="acts" style="padding-right:4px"><button data-act="openTgDir" title="Открыть папку"><i data-i="external"></i></button></div></div>
+                <span class="muted" style="font-size:11.5px" id="pathTState">—</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ ABOUT ============ -->
+        <section class="page" id="p-about">
+          <div class="card">
+            <div class="about-hero">
+              <div class="mark">夢</div>
+              <div><h2>Yume Haze Zapret</h2><div class="muted">Версия 2.1.0 · стабильный канал</div><div class="btns mt"><button class="btn sm" data-act="linkZapret"><i data-i="link"></i>Zapret на GitHub</button><button class="btn sm" data-act="linkTg"><i data-i="send"></i>TG WS Proxy на GitHub</button><button class="btn sm ghost" data-go="updates">Проверить обновления</button></div></div>
+            </div>
+            <hr class="sep">
+            <div class="kv">
+              <div><small>Zapret</small><b id="abZ">1.10.4</b></div>
+              <div><small>TG WS Proxy</small><b id="abT">—</b></div>
+              <div><small>Стратегий</small><b id="abS">22</b></div>
+            </div>
+            <p class="muted mt2" style="font-size:12.5px;margin-bottom:0">Графическая оболочка для управления обходом блокировок Zapret и локальным прокси Telegram через WebSocket. Использует открытые проекты zapret и tg-ws-proxy. Все данные хранятся локально.</p>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+</div>
+<div class="toasts" id="toasts"></div>
+<div class="modal-bg" id="modalBg"><div class="modal" id="modal"></div></div>
+<script src="app.js"></script>
+</body>
+</html>

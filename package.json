@@ -1,0 +1,81 @@
+{
+  "name": "yume-haze-zapret",
+  "productName": "Yume Haze Zapret",
+  "version": "2.1.2",
+  "description": "Графическая оболочка для Zapret (Flowseal) и TG WS Proxy",
+  "main": "main.js",
+  "author": {
+    "name": "Yume Haze"
+  },
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "selftest": "node scripts/selftest.js",
+    "assets": "node scripts/gen-assets.js",
+    "dist": "electron-builder --win nsis portable --x64",
+    "dist:nsis": "electron-builder --win nsis --x64",
+    "dist:portable": "electron-builder --win portable --x64",
+    "pack": "electron-builder --win --dir"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "app.yumehaze.zapret",
+    "productName": "Yume Haze Zapret",
+    "copyright": "Copyright © 2026 Yume Haze",
+    "directories": {
+      "output": "release",
+      "buildResources": "res"
+    },
+    "compression": "normal",
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "renderer/**/*",
+      "res/icon.ico",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "res/icon.ico",
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "artifactName": "YumeHazeZapret-${version}-setup.${ext}",
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "shortcutName": "Yume Haze Zapret",
+      "uninstallDisplayName": "Yume Haze Zapret ${version}",
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true,
+      "installerIcon": "res/icon.ico",
+      "uninstallerIcon": "res/icon.ico",
+      "installerHeaderIcon": "res/icon.ico"
+    },
+    "portable": {
+      "artifactName": "YumeHazeZapret-${version}-portable.${ext}",
+      "requestExecutionLevel": "user",
+      "unpackDirName": "YumeHazeZapret"
+    }
+  }
+}
