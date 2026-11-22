@@ -36,6 +36,66 @@ function emptyStats() {
 
 function bin() { return config.tgBin(); }
 function exeExists() { try { return fs.existsSync(bin()); } catch (_) { return false; } }
+function dataDir() { return path.join(path.dirname(bin()), 'TgWsProxy_data'); }
+function configFile() { return path.join(dataDir(), 'config.json'); }
+
+/* ВАЖНО: TgWsProxy_windows.exe — это tray-приложение (PyInstaller, console=False).
+   Параметры командной строки (--port/--secret/--dc-ip) оно НЕ разбирает: настройки
+   читаются только из TgWsProxy_data/config.json, создаваемого при первом запуске.
+   Раньше мы передавали флаги и прокси слушал дефолтный порт 1443 со СВОИМ секретом —
+   ссылка Telegram не работала, статистика не приходила. Теперь мы пишем config.json сами. */
+function trayConfig() {
+  const t = config.get().tg;
+  const secret = /^[0-9a-f]{32}$/i.test(t.secret || '') ? t.secret.toLowerCase() : null;
+  return {
+    port: Number(t.port),
+    host: t.host,
+    dc_ip: Array.isArray(t.dcIp) && t.dcIp.filter(Boolean).length
+      ? t.dcIp.filter(Boolean)
+      : ['2:149.154.167.220', '4:149.154.167.220'],
+    verbose: !!t.verbose,
+    check_updates: false,          // обновлениями занимается Yume Haze
+    log_max_mb: 5,
+    buf_kb: 256,
+    pool_size: Number(t.poolSize) || 4,
+    cfproxy: !!t.cfproxy,
+    h2: !!t.h2,
+    cfproxy_user_domain_enabled: !!t.cfproxyDomain,
+    cfproxy_user_domain: t.cfproxyDomain ? [t.cfproxyDomain] : [],
+    cfproxy_worker_enabled: false,
+    cfproxy_worker_domain: [],
+    force_test_dc: false,
+    no_secure: !!t.noSecure,
+    appearance: 'dark',
+    language: 'ru',
+    autostart: false,
+    ...(secret ? { secret } : {})
+  };
+}
+
+/* Записывает config.json в TgWsProxy_data. Если файла ещё нет и секрета нет —
+   секрет остаётся дефолтным (генерирует сам прокси), и мы подхватываем его после запуска. */
+function writeTrayConfig() {
+  ensureDir(dataDir());
+  const file = configFile();
+  let existing = {};
+  try { existing = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (_) {}
+  const t = config.get().tg;
+  const next = { ...existing, ...trayConfig() };
+  if (!next.secret) delete next.secret;
+  fs.writeFileSync(file + '.tmp', JSON.stringify(next, null, 2), 'utf8');
+  fs.renameSync(file + '.tmp', file);
+  return next;
+}
+
+/* Читает секрет из config.json — им пользуется и прокси, и наша ссылка. */
+function readTraySecret() {
+  try {
+    const j = JSON.parse(fs.readFileSync(configFile(), 'utf8'));
+    if (j && /^[0-9a-f]{32}$/i.test(j.secret || '')) return String(j.secret).toLowerCase();
+  } catch (_) {}
+  return null;
+}
 
 /* ---------------- установка ---------------- */
 async function latestRelease() {
@@ -76,8 +136,10 @@ async function install({ onProgress } = {}) {
   });
   ensureDir(path.dirname(dest));
   try { fs.chmodSync(dest, 0o755); } catch (_) {}
-  // Портативный режим: конфиг и логи рядом с exe
-  ensureDir(path.join(path.dirname(dest), 'TgWsProxy_data'));
+  // Портативный режим: конфиг и логи рядом с exe (config.json пишем свой, см. writeTrayConfig)
+  ensureDir(dataDir());
+  try { writeTrayConfig(); } catch (e) { log.warn('TG', 'config.json: ' + e.message); }
+  fs.writeFileSync(path.join(dataDir(), 'version.txt'), rel.tag, 'utf8');
   log.ok('TG', `TG WS Proxy ${rel.tag} установлен (${humanBytes(dl.bytes)})`);
   if (onProgress) onProgress({ stage: 'done', pct: 100, text: `Установлено ${rel.tag}` });
   return { ok: true, version: rel.tag, path: dest };
@@ -118,14 +180,27 @@ async function start() {
   }
   await killByName(path.basename(bin()));
 
-  const args = buildArgs();
-  log.info('TG', `Запуск: TgWsProxy.exe ${args.filter(a => a !== t.secret).join(' ')}`);
-  child = spawn(bin(), args, {
+  // 0) если секрета ещё нет — генерируем сами, чтобы ссылка была предсказуемой
+  if (!/^[0-9a-f]{32}$/i.test(t.secret || '')) {
+    config.patch({ tg: { secret: randomHex(16) } });
+    log.info('TG', 'Сгенерирован секрет для нового профиля');
+  }
+  // 1) пишем config.json с нашими портом/секретом/DC
+  let cfgWritten;
+  try { cfgWritten = writeTrayConfig(); } catch (e) { throw new Error('Не удалось записать config.json: ' + e.message); }
+  // 2) первый запуск показывал бы окно с инструкцией — помечаем, что он пройден
+  try { fs.writeFileSync(path.join(dataDir(), '.first_run_done_mtproto'), ''); } catch (_) {}
+  if (cfgWritten.secret && cfgWritten.secret !== t.secret) config.patch({ tg: { secret: cfgWritten.secret } });
+
+  log.info('TG', `Запуск: TgWsProxy.exe (порт ${cfgWritten.port}, секрет ${String(cfgWritten.secret || '').slice(0, 6)}…, pool ${cfgWritten.pool_size})`);
+  child = spawn(bin(), [], {
     cwd: path.dirname(bin()), windowsHide: true, detached: false,
     stdio: ['ignore', 'pipe', 'pipe']
   });
   child.stdout.on('data', d => onOutput(d));
   child.stderr.on('data', d => onOutput(d));
+  // логи прокси пишет в файл TgWsProxy_data/proxy.log — читаем его тоже
+  startLogWatch();
   child.on('exit', (code, sig) => {
     log.info('TG', `Процесс завершился (код ${code}${sig ? ', ' + sig : ''})`);
     child = null; startedAt = null;
@@ -138,8 +213,68 @@ async function start() {
     return { ok: false, error: 'Прокси не начал слушать порт. Проверьте журнал.' };
   }
   startedAt = Date.now();
+  // прокси мог сам сгенерировать секрет при первом запуске — берём его, чтобы ссылка совпала
+  setTimeout(() => {
+    const sec = readTraySecret();
+    if (sec && sec !== config.get().tg.secret) {
+      config.patch({ tg: { secret: sec } });
+      log.info('TG', 'Секрет синхронизирован с прокси: ' + sec.slice(0, 6) + '…');
+    }
+  }, 2500);
   log.ok('TG', `Прокси запущен на ${t.host}:${t.port}`);
   return { ok: true, link: link() };
+}
+
+let logWatch = null;      // fs.watch на proxy.log
+let logReadPos = 0;       // позиция чтения файла
+
+/* tray-сборка TgWsProxy пишет журнал в TgWsProxy_data/proxy.log, а не в stdout.
+   Читаем файл и кормим тем же парсером, что и stdout. */
+function logFile() { return path.join(dataDir(), 'proxy.log'); }
+
+function startLogWatch() {
+  stopLogWatch();
+  const file = logFile();
+  try {
+    if (fs.existsSync(file)) logReadPos = fs.statSync(file).size;
+    else logReadPos = 0;
+  } catch (_) { logReadPos = 0; }
+  readLogFile();
+  try {
+    logWatch = fs.watch(path.dirname(file), (ev, name) => {
+      if (!name || String(name) === 'proxy.log') readLogFile();
+    });
+    logWatch.on('error', () => {});
+  } catch (_) { logWatch = null; }
+  // резервный опрос — fs.watch на Windows не всегда отдаёт события
+  if (!logWatch) {
+    logWatch = setInterval(readLogFile, 4000);
+    logWatch.unref && logWatch.unref();
+  }
+}
+
+function stopLogWatch() {
+  if (!logWatch) return;
+  try { logWatch.close ? logWatch.close() : clearInterval(logWatch); } catch (_) {}
+  logWatch = null;
+}
+
+function readLogFile() {
+  const file = logFile();
+  let stat;
+  try { stat = fs.statSync(file); } catch (_) { return; }
+  if (stat.size < logReadPos) logReadPos = 0;     // файл ротировался
+  if (stat.size === logReadPos) return;
+  let buf;
+  try {
+    const fd = fs.openSync(file, 'r');
+    const len = stat.size - logReadPos;
+    buf = Buffer.alloc(len);
+    fs.readSync(fd, buf, 0, len, logReadPos);
+    fs.closeSync(fd);
+  } catch (_) { return; }
+  logReadPos = stat.size;
+  onOutput(buf);
 }
 
 function onOutput(buf) {
@@ -229,6 +364,7 @@ async function stop({ silent } = {}) {
     child = null;
   }
   await killByName(path.basename(bin()));
+  stopLogWatch();
   startedAt = null;
   stats = emptyStats();
   if (!silent) log.info('TG', 'Прокси остановлен');
@@ -323,6 +459,7 @@ async function status() {
     settings: { ...t },
     stats,
     pool: `${Math.min(t.poolSize, 16)} / 16`,
+    logFile: logFile(),
     recent: recent.slice(-30)
   };
 }
@@ -340,11 +477,20 @@ async function diagnostics() {
   const cf = await tcpProbe('1.1.1.1', 443, 1500);
   push('Cloudflare', cf.ok ? 'ok' : 'bad', cf.ok ? `Доступен, ${cf.ms} мс` : 'Недоступен', 'CF-прокси не будет работать без доступа к Cloudflare.');
   push('Мультиплексирование H2', t.h2 && t.cfproxy ? 'ok' : 'warn', t.h2 && t.cfproxy ? 'Включено' : 'Выключено', '');
+  let cfgOk = false, cfgDetail = 'Не найден';
+  try {
+    const j = JSON.parse(fs.readFileSync(configFile(), 'utf8'));
+    cfgOk = Number(j.port) === Number(t.port) && /^[0-9a-f]{32}$/i.test(j.secret || '');
+    cfgDetail = cfgOk ? `порт ${j.port}, секрет совпадает`
+      : `в файле порт ${j.port}, секрет ${j.secret ? 'есть' : 'нет'} — перезапустите прокси`;
+  } catch (_) {}
+  push('config.json', cfgOk ? 'ok' : 'warn', cfgDetail, 'Нажмите «Перезапустить» — файл будет создан заново из настроек.');
   return { items };
 }
 
 module.exports = {
   RELEASE_API, PINNED_VERSION, ASSET, DC_INFO,
   latestRelease, install, installedVersion, start, stop, restart, status, link, newSecret,
-  saveSettings, validateTg, pingDc, dcStatus, diagnostics, buildArgs, portOpen, parseStats, exeExists
+  saveSettings, validateTg, pingDc, dcStatus, diagnostics, buildArgs, portOpen, parseStats, exeExists,
+  trayConfig, writeTrayConfig, readTraySecret, configFile, dataDir
 };

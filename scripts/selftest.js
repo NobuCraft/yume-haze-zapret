@@ -167,25 +167,38 @@ async function atest(name, fn) {
     assert.equal(link, `tg://proxy?server=127.0.0.1&port=1443&secret=ee${T.secret}${Buffer.from('example.com').toString('hex')}`);
     config.patch({ tg: { fakeTlsDomain: '' } });
   });
-  test('аргументы запуска совпадают с CLI tg-ws-proxy', () => {
-    const a = tgws.buildArgs();
-    assert.ok(a.includes('--host') && a.includes('127.0.0.1'));
-    assert.ok(a.includes('--port') && a.includes('1443'));
-    assert.ok(a.includes('--secret') && a.includes(T.secret));
-    assert.ok(a.includes('--pool-size') && a.includes('4'));
-    assert.ok(a.includes('--portable'));
-    assert.ok(!a.includes('--no-cfproxy'), 'cfproxy включён по умолчанию');
+  test('настройки пишутся в config.json, а не флагами CLI', () => {
+    // TgWsProxy_windows.exe — tray-сборка: аргументы командной строки не разбирает
+    const c = tgws.trayConfig();
+    assert.equal(c.port, 1443);
+    assert.equal(c.host, '127.0.0.1');
+    assert.equal(c.secret, T.secret);
+    assert.equal(c.pool_size, 4);
+    assert.ok(Array.isArray(c.dc_ip) && c.dc_ip.length === 2, 'dc_ip');
+    assert.equal(c.cfproxy, true);
+    assert.equal(c.h2, true);
+    assert.ok(tgws.configFile().endsWith('TgWsProxy_data/config.json'), 'путь config.json');
   });
-  test('выключение cfproxy/h2 добавляет --no-cfproxy/--no-h2', () => {
+  test('config.json реально записывается и читается обратно', () => {
+    const saved = tgws.writeTrayConfig();
+    assert.ok(fs.existsSync(tgws.configFile()), 'файл не создан');
+    const onDisk = JSON.parse(fs.readFileSync(tgws.configFile(), 'utf8'));
+    assert.equal(onDisk.port, 1443);
+    assert.equal(onDisk.secret, T.secret);
+    assert.equal(saved.port, onDisk.port);
+    assert.equal(tgws.readTraySecret(), T.secret);
+  });
+  test('выключение cfproxy/h2 попадает в config.json', () => {
     config.patch({ tg: { cfproxy: false, h2: false } });
-    const a = tgws.buildArgs();
-    assert.ok(a.includes('--no-cfproxy') && a.includes('--no-h2'));
+    const c = tgws.trayConfig();
+    assert.equal(c.cfproxy, false);
+    assert.equal(c.h2, false);
     config.patch({ tg: { cfproxy: true, h2: true } });
   });
-  test('dc-ip передаётся повторяющимся флагом', () => {
-    const a = tgws.buildArgs();
-    assert.equal(a.filter(x => x === '--dc-ip').length, 2);
-    assert.ok(a.includes('2:149.154.167.220'));
+  test('dc_ip сохраняется в config.json списком', () => {
+    const c = tgws.trayConfig();
+    assert.deepEqual(c.dc_ip, ['2:149.154.167.220', '4:149.154.167.220']);
+    assert.equal(c.check_updates, false, 'обновления ведёт Yume Haze, а не прокси');
   });
   test('новый секрет: 32 hex и меняется', () => {
     const before = config.get().tg.secret;
