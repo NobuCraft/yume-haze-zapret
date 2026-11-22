@@ -57,6 +57,22 @@ function paintIcons(root = document) {
   });
 }
 
+/* ---------------- видимость окна ---------------- */
+/* Пока окно свёрнуто или скрыто в трее, перерисовывать интерфейс незачем:
+   снимок состояния приходит каждые 4 с и renderOverview() трогает сотни узлов. */
+function uiVisible() {
+  if (document.hidden) return false;
+  try { if (window.api && api.isMinimized && api.isMinimized()) return false; } catch (_) {}
+  return true;
+}
+
+/* Пауза всех CSS-анимаций и переходов, когда окно не на экране. */
+function syncHiddenFlag() {
+  const hidden = !uiVisible();
+  if (hidden) document.documentElement.dataset.hidden = '1';
+  else delete document.documentElement.dataset.hidden;
+}
+
 /* ---------------- состояние ---------------- */
 let S = { zapret: null, tg: null, settings: null, logs: [], update: 0 };
 let lastTest = null;         // последний быстрый тест
@@ -755,7 +771,8 @@ function renderTargets() {
 }
 
 /* ---------------- карточки статусов ---------------- */
-function renderOverview() {
+function renderOverview(opts = {}) {
+  const light = !!opts.light;   // «лёгкий» тик: только обзор, без скрытых страниц
   const z = S.zapret, t = S.tg;
   const zOn = z && z.running, tOn = t && t.running;
   const anyOn = zOn || tOn;
@@ -844,7 +861,10 @@ function renderOverview() {
     $('#abT').textContent = t.version || '—';
     renderDc();
   }
-  renderStrategies();
+  // Раньше здесь на КАЖДОМ тике (раз в 4 с) перерисовывался список из 22 стратегий
+  // и таблица дата-центров — даже когда эти страницы не открыты.
+  if (ui.page === 'zapret') { renderStrategies(); }
+  if (ui.page === 'tg') { renderDc(); }
   if (ui.page === 'updates') renderUpdates(null);
   if (ui.page === 'console') renderLogs();
 }
@@ -1199,8 +1219,12 @@ api.onState(st => {
   S.zapret = st.zapret; S.tg = st.tg; S.settings = st.settings;
   S.logs = st.logs || S.logs;
   S.update = st.update || 0;
-  $('#updBadge').hidden = !S.update;
-  if (S.update) $('#updBadge').textContent = S.update;
+  if (!uiVisible()) { S.dirty = true; return; }   // свёрнуто — отрисовываем при возврате
+  const badge = $('#updBadge');
+  if (badge && badge.hidden === !!S.update) {
+    badge.hidden = !S.update;
+    if (S.update) badge.textContent = S.update;
+  }
   renderOverview();
   if (ui.page === 'console') renderLogs();
 });
@@ -1213,6 +1237,22 @@ api.onLog(entry => {
     box.insertAdjacentHTML('beforeend', `<div class="logline ${entry.level === 'error' ? 'err' : ''}"><time>${fmtTime(entry.ts)}</time><span class="src ${entry.source}">${entry.source}</span><span class="msg">${esc(entry.message)}</span></div>`);
     if (atBottom) box.scrollTop = box.scrollHeight;
   }
+});
+
+/* Пачка строк журнала: одна перерисовка вместо N вставок в DOM. */
+api.onLogBatch(batch => {
+  if (!Array.isArray(batch) || !batch.length) return;
+  S.logs.push(...batch);
+  if (S.logs.length > 600) S.logs = S.logs.slice(-600);
+  if (ui.page !== 'console' || ui.logFilter.source !== 'all' || ui.logFilter.q) return;
+  const box = $('#logBox');
+  if (!box) return;
+  const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
+  const html = batch.map(entry => `<div class="logline ${entry.level === 'error' ? 'err' : ''}"><time>${fmtTime(entry.ts)}</time><span class="src ${entry.source}">${entry.source}</span><span class="msg">${esc(entry.message)}</span></div>`).join('');
+  box.insertAdjacentHTML('beforeend', html);
+  // держим в DOM не больше 400 строк
+  while (box.childElementCount > 400) box.firstElementChild.remove();
+  if (atBottom) box.scrollTop = box.scrollHeight;
 });
 
 api.onProgress(p => {
@@ -1266,6 +1306,25 @@ api.onPick(ev => {
 });
 
 api.onMaximized(() => {});
+
+/* Вернулись в окно — досрочно догоняем состояние, пропущенное пока были свёрнуты. */
+document.addEventListener('visibilitychange', () => {
+  syncHiddenFlag();
+  if (uiVisible() && S.dirty) {
+    S.dirty = false;
+    renderOverview();
+    if (ui.page === 'console') renderLogs();
+  }
+});
+window.addEventListener('blur', () => { syncHiddenFlag(); });
+window.addEventListener('focus', () => {
+  syncHiddenFlag();
+  if (uiVisible() && S.dirty) {
+    S.dirty = false;
+    renderOverview();
+    if (ui.page === 'console') renderLogs();
+  }
+});
 api.onNav(ev => { if (ev && ev.page) go(ev.page); });
 
 $('#adminBanner') && $('#adminBanner').addEventListener('click', e => {
@@ -1278,6 +1337,8 @@ $('#adminBanner') && $('#adminBanner').addEventListener('click', e => {
 /* ---------------- старт ---------------- */
 (async function init() {
   paintIcons();
+  syncHiddenFlag();
+  setInterval(syncHiddenFlag, 2000);   // трей → окно: держим флаг в актуальном виде
   const info = await api.info();
   if (info.ok) {
     if ($('#tbVer')) $('#tbVer').textContent = info.version;
@@ -1306,5 +1367,11 @@ $('#adminBanner') && $('#adminBanner').addEventListener('click', e => {
   await loadState();
   renderTargets();
   go('overview');
-  setInterval(() => { if (S.zapret && S.zapret.running) $('#zUp').textContent = dur(Date.now() - (S.zapret.startedAt || Date.now())); }, 1000);
+  setInterval(() => {
+    if (!uiVisible()) return;               // свёрнуто — не тратим кадры
+    if (S.zapret && S.zapret.running) {
+      const el = $('#zUp');
+      if (el) el.textContent = dur(Date.now() - (S.zapret.startedAt || Date.now()));
+    }
+  }, 1000);
 })();

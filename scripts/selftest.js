@@ -320,6 +320,28 @@ async function atest(name, fn) {
     for (const c of handlers) assert.ok(preload.includes(`'${c}'`), 'preload не вызывает канал ' + c);
     assert.ok(checked > 20, 'мало проверенных вызовов: ' + checked);
   });
+  test('оптимизации: опрос процессов кэшируется, тяжёлые поля — не каждый тик', () => {
+    const utilSrc = fs.readFileSync(path.join(ROOT, 'src', 'util.js'), 'utf8');
+    const zapSrc = fs.readFileSync(path.join(ROOT, 'src', 'zapret.js'), 'utf8');
+    const mainSrc = fs.readFileSync(path.join(ROOT, 'main.js'), 'utf8');
+    const appSrc = fs.readFileSync(path.join(ROOT, 'renderer', 'app.js'), 'utf8');
+    // tasklist через кэш и объединение запросов
+    assert.ok(/tasklistCached/.test(utilSrc), 'нет кэша tasklist');
+    assert.ok(/findProcessByName\(name\)\s*{\s*return tasklistCached/.test(utilSrc), 'findProcessByName не через кэш');
+    // serviceState не должен запускать PowerShell
+    const svcBlock = utilSrc.slice(utilSrc.indexOf('async function serviceState'), utilSrc.indexOf('async function serviceState') + 900);
+    assert.ok(!/sc\(\[/.test(svcBlock), 'serviceState всё ещё вызывает sc() через PowerShell');
+    // тяжёлые метрики Zapret по кэшу
+    assert.ok(/function heavyStats/.test(zapSrc), 'нет heavyStats');
+    assert.ok(/heavy\.ipset/.test(zapSrc) && /heavy\.lists/.test(zapSrc), 'status() не использует кэш');
+    // интерфейс: не рендерим скрытые страницы
+    assert.ok(/if \(ui\.page === 'zapret'\) \{ renderStrategies\(\); \}/.test(appSrc), 'renderStrategies вызывается всегда');
+    assert.ok(/function uiVisible/.test(appSrc), 'нет проверки видимости окна');
+    // главный процесс: опрос реже в трее, журнал батчами
+    assert.ok(/uiOnScreen \? 4000 : 15000/.test(mainSrc), 'нет разного интервала опроса');
+    assert.ok(/logBatch/.test(mainSrc), 'журнал не батчами');
+    assert.ok(/lastDrvAt > 60000/.test(mainSrc), 'диагностика драйвера не кэшируется');
+  });
   test('после установки Zapret не падает на syncUserListsToFiles', () => {
     const src = fs.readFileSync(path.join(ROOT, 'src', 'zapret.js'), 'utf8');
     assert.ok(!/syncUserListsToFiles\s*\(/.test(src), 'вызов несуществующей функции вернулся');

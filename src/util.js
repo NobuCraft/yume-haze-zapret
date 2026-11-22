@@ -195,6 +195,36 @@ async function relaunchElevated(args, cwd) {
 
 function psQuote(s) { return `'${String(s).replace(/'/g, "''")}'`; }
 
+/* Снимок списка процессов с кэшем на 1.5 с и объединением одновременных запросов:
+   раньше status() → winwsPids() и driverDiagnostics() → winwsPids() запускали
+   ДВА отдельных tasklist на каждый тик (раз в 4 с), а tasklist.exe — полное
+   перечисление процессов, это заметная нагрузка на CPU. */
+let procCache = { at: 0, name: '', list: null };
+let procPending = null;
+
+async function tasklistCached(name) {
+  if (!IS_WIN) return [];
+  const now = Date.now();
+  if (procCache.list && procCache.name === name && now - procCache.at < 1500) return procCache.list;
+  if (procPending && procPending.name === name) return procPending.promise;
+  const promise = (async () => {
+    const r = await exec('tasklist', ['/FI', `IMAGENAME eq ${name}`, '/FO', 'CSV', '/NH']);
+    const out = [];
+    for (const line of r.stdout.split(/\r?\n/)) {
+      const m = line.match(/^"([^"]+)","(\d+)"/);
+      if (m && m[1].toLowerCase() === name.toLowerCase()) out.push({ name: m[1], pid: Number(m[2]) });
+    }
+    procCache = { at: Date.now(), name, list: out };
+    procPending = null;
+    return out;
+  })();
+  procPending = { name, promise };
+  return promise;
+}
+
+/* Сбросить кэш процессов (после kill/spawn, чтобы статус был свежим). */
+function invalidateProcessCache() { procCache = { at: 0, name: '', list: null }; }
+
 async function tasklist() {
   if (!IS_WIN) return new Set();
   const r = await exec('tasklist', ['/FO', 'CSV', '/NH']);
@@ -207,23 +237,16 @@ async function tasklist() {
 }
 
 async function findProcessByName(name) {
-  if (!IS_WIN) return [];
-  const r = await exec('tasklist', ['/FI', `IMAGENAME eq ${name}`, '/FO', 'CSV', '/NH']);
-  const out = [];
-  for (const line of r.stdout.split(/\r?\n/)) {
-    const m = line.match(/^"([^"]+)","(\d+)"/);
-    if (m && m[1].toLowerCase() === name.toLowerCase()) {
-      out.push({ name: m[1], pid: Number(m[2]) });
-    }
-  }
-  return out;
+  return tasklistCached(name);
 }
 
 async function killByName(name) {
   if (!IS_WIN) return false;
+  invalidateProcessCache();
   const list = await findProcessByName(name);
   if (!list.length) return false;
   const r = await exec('taskkill', ['/F', '/IM', name]);
+  invalidateProcessCache();
   return r.ok;
 }
 
@@ -237,15 +260,22 @@ async function sc(args, timeout = 20000) {
   return r;
 }
 
-async function serviceState(name = 'zapret') {
+const svcCache = new Map();
+async function serviceState(name = 'zapret', { force = false } = {}) {
   if (!IS_WIN) return 'unavailable';
-  const r = await sc(['query', name]);
+  const hit = svcCache.get(name);
+  if (!force && hit && Date.now() - hit.at < 5000) return hit.state;
+  // Раньше здесь вызывался sc() → execConsole → PowerShell (запуск powershell.exe на
+  // каждый опрос). Нам нужна только строка STATE — она в ASCII, кодировка не важна.
+  const r = await exec('sc.exe', ['query', name], { timeout: 8000 });
   if (!r.ok) {
     // 1060 — служба не установлена; прочие коды (1075, 5) тоже считаем «не активна»
     return /1060/.test(r.stdout + r.stderr) ? 'not-installed' : 'not-installed';
   }
   const m = r.stdout.match(/STATE\s*:\s*\d+\s+(\w+)/i);
-  return m ? m[1].toUpperCase() : 'UNKNOWN';
+  const state = m ? m[1].toUpperCase() : 'UNKNOWN';
+  svcCache.set(name, { at: Date.now(), state });
+  return state;
 }
 
 /* ---------- сеть ---------- */
@@ -314,6 +344,7 @@ function findFiles(dir, matcher, out = [], depth = 0) {
 }
 
 module.exports = {
+  tasklistCached, invalidateProcessCache,
   IS_WIN, setPaths, paths, ensureDir, readJson, writeJson, appendLine, rotateFile,
   httpGet, getJson, downloadWithMirrors, exec, execConsole, isAdmin, runElevated, psQuote, relaunchElevated,
   decodeConsole, looksBroken,

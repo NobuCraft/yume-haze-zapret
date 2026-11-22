@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('api', {
   state: () => call('app:state'),
   onState: fn => on('state', fn),
   onLog: fn => on('log', fn),
+  onLogBatch: fn => on('logBatch', fn),
   onProgress: fn => on('progress', fn),
   onPick: fn => on('pick', fn),
   onMaximized: fn => on('ui:maximized', fn),
@@ -37,6 +38,7 @@ contextBridge.exposeInMainWorld('api', {
   pickDir: () => call('dialog:dir'),
 
   /* настройки */
+  isMinimized: () => call('app:minimized'),
   settings: () => call('settings:get'),
   patchSettings: patch => call('settings:patch', patch),
   resetSettings: section => call('settings:reset', section),

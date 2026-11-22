@@ -133,6 +133,7 @@ async function install({ onProgress } = {}) {
   if (onProgress) onProgress({ stage: 'done', pct: 100, text: `Zapret ${version} установлен` });
   log.ok('ZAPRET', `Zapret ${version} установлен в ${target}`);
   try { syncUserLists(); } catch (e) { log.warn('ZAPRET', 'списки: ' + e.message); }
+  invalidateHeavy();
   return { ok: true, dir: target, version };
 }
 
@@ -518,6 +519,21 @@ async function startAsService(file) {
 }
 
 function escapeRe(str) { return String(str || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+/* Кэш «тяжёлых» полей статуса: ipset, размеры списков, версия exe.
+   Считается не чаще раза в 60 с (или принудительно). */
+let heavyCache = null;
+function heavyStats(d = dir(), { force = false } = {}) {
+  if (!force && heavyCache && Date.now() - heavyCache.at < 60 * 1000) return heavyCache;
+  let ipset = null, lists = null, exeVer = null;
+  try { ipset = ipsetState(d); } catch (_) {}
+  try { lists = listInfo(); } catch (_) {}
+  if (force || !heavyCache) { try { exeVer = exeVersion(); } catch (_) {} }
+  else exeVer = heavyCache.exeVersion;
+  heavyCache = { at: Date.now(), ipset, lists, exeVersion: exeVer };
+  return heavyCache;
+}
+function invalidateHeavy() { heavyCache = null; }
 
 /* Версия установленного Zapret по версии самого winws.exe (в журнале он печатает
    «github version v72.9»). Нужна, когда релиз не содержит version.txt. */
@@ -1130,12 +1146,15 @@ async function status() {
   const has = valid(d);
   const pids = has ? await winwsPids() : [];
   const svc = has ? await serviceState('zapret') : 'not-installed';
+  // Тяжёлые метрики (ipset-all.txt ~33k строк, версия из PE-заголовка через PowerShell)
+  // считаем не чаще раза в минуту: раньше они выполнялись на каждый тик состояния (раз в 4 с).
+  const heavy = heavyStats(d);
   return {
     installed: has,
     dir: d,
     version: installedVersion(d),
     expectedVersion: releaseCache ? releaseCache.version : ZAPRET_VERSION,
-    exeVersion: (() => { try { return exeVersion(); } catch (_) { return null; } })(),
+    exeVersion: heavy.exeVersion,
     running: pids.length > 0,
     pids,
     startedAt: startedAt && pids.length ? startedAt : null,
@@ -1143,8 +1162,8 @@ async function status() {
     strategies: STRATEGIES,
     service: { installed: svc !== 'not-installed', state: svc },
     gameFilter: readGameFilter(d),
-    ipset: ipsetState(d),
-    lists: listInfo(),
+    ipset: heavy.ipset,
+    lists: heavy.lists,
     checkUpdates: fs.existsSync(path.join(d, 'utils', 'check_updates.enabled'))
   };
 }
@@ -1205,6 +1224,7 @@ function detectExisting() {
 module.exports = {
   WINWS, ZAPRET_VERSION, latestRelease, dir, valid, lists, batPath, installedVersion,
   releaseKnown: () => (releaseCache ? releaseCache.version : null), exeVersion,
+  heavyStats, invalidateHeavy,
   install, start, stop, restart, status, setStrategy, setGameFilter, setIpsetMode,
   applyGameFilterFile, readGameFilter, ipsetState, applyIpsetMode, updateIpset, updateHosts,
   readList, writeList, listInfo, LIST_FILES, installService, removeService,

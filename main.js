@@ -64,7 +64,9 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
-      spellcheck: false
+      spellcheck: false,
+      // фоновые вкладки/окна не должны душиться таймерами — нам нужен стабильный опрос
+      backgroundThrottling: false
     }
   });
 
@@ -75,10 +77,14 @@ function createWindow() {
     shown = true;
     const cfg = config.get();
     const hiddenArg = process.argv.includes('--hidden') || process.argv.includes('--autostart');
-    if (cfg.app.startMinimized || hiddenArg) { win.hide(); } else { showWindow(); }
+    if (cfg.app.startMinimized || hiddenArg) { win.hide(); uiOnScreen = false; } else { showWindow(); uiOnScreen = true; }
     pushState();
   };
   win.once('ready-to-show', reveal);
+  win.on('show', () => { uiOnScreen = true; pushState(); });
+  win.on('hide', () => { uiOnScreen = false; });
+  win.on('minimize', () => { uiOnScreen = false; });
+  win.on('restore', () => { uiOnScreen = true; pushState(); });
   // страховка: на части драйверов/в удалённом сеансе ready-to-show может не прийти
   setTimeout(reveal, 2500);
 
@@ -87,6 +93,7 @@ function createWindow() {
     if (!quitting && cfg.app.closeToTray) {
       e.preventDefault();
       win.hide();
+      uiOnScreen = false;
       notify('Yume Haze свернут в трей', 'Службы продолжают работать в фоне');
     }
   });
@@ -188,15 +195,29 @@ async function refreshTray() {
 
 /* ---------- состояние ---------- */
 let pushTimer = null;
+/* Окно реально на экране? Пока свёрнуто/скрыто, интерфейсу нечего перерисовывать,
+   поэтому снимок состояния отправляем реже и без тяжёлых полей. */
+let uiOnScreen = false;
+let lastDrvAt = 0;        // когда последний раз считали диагностику драйвера
+let cachedDrv = null;
 function pushState() {
   clearTimeout(pushTimer);
   pushTimer = setTimeout(async () => {
     try {
       const [z, t] = await Promise.all([zapret.status(), tgws.status()]);
+      // Диагностику драйвера (PowerShell для проверки подписи + sc query) гоняем только
+      // при открытом окне и не чаще раза в минуту — раньше она шла в каждом тике.
       let drv = null;
-      try { drv = await zapret.driverDiagnostics(); } catch (_) { drv = null; }
+      if (uiOnScreen && Date.now() - lastDrvAt > 60000) {
+        lastDrvAt = Date.now();
+        try { drv = await zapret.driverDiagnostics(); cachedDrv = drv; } catch (_) { drv = null; }
+      } else {
+        drv = cachedDrv;
+      }
       send('state', {
-        zapret: z, tg: t, settings: config.get(), logs: log.list(),
+        zapret: z, tg: t, settings: config.get(),
+        // журнал (до 400 записей) нужен только открытому интерфейсу
+        logs: uiOnScreen ? log.list() : [],
         update: updateInfo ? updates.pendingCount(updateInfo) : 0,
         admin: await util.isAdmin(),
         driver: drv ? { service: drv.service, version: drv.sys && drv.sys.version, sys: drv.sys, dll: drv.dll, signature: drv.signature, running: drv.running, ok: drv.ok, hint: drv.hint } : null
@@ -298,6 +319,8 @@ async function requestElevation(action, { ask = true } = {}) {
 function registerIpc() {
   /* общее */
   ipcMain.handle('app:elevate', wrap(async (action) => ok(await requestElevation(action || 'start'))));
+  ipcMain.handle('app:minimized', wrap(async () => ok({ value: !uiOnScreen })));
+
   ipcMain.handle('app:info', wrap(async () => ok({
     version: require('./package.json').version,
     platform: process.platform,
@@ -328,7 +351,7 @@ function registerIpc() {
   });
   ipcMain.handle('ui:close', () => {
     const cfg = config.get();
-    if (cfg.app.closeToTray) { win && win.hide(); return ok({ hidden: true }); }
+    if (cfg.app.closeToTray) { win && win.hide(); uiOnScreen = false; return ok({ hidden: true }); }
     quitting = true; app.quit(); return ok({ hidden: false });
   });
 
@@ -668,7 +691,24 @@ app.whenReady().then(async () => {
 
   registerIpc();
   net.setPickListener(ev => send('pick', ev));
-  log.onChange(entry => send('log', entry));
+  /* Журнал в интерфейс отправляем пачками (не чаще 5 раз в секунду) и только когда
+     окно на экране: раньше каждая строка (например, поток лога TgWsProxy) шла отдельным
+     IPC-сообщением и вызывала вставку в DOM. */
+  let logQueue = [];
+  let logFlushTimer = null;
+  log.onChange(entry => {
+    if (!uiOnScreen) return;
+    logQueue.push(entry);
+    if (logQueue.length > 200) logQueue = logQueue.slice(-200);
+    if (logFlushTimer) return;
+    logFlushTimer = setTimeout(() => {
+      logFlushTimer = null;
+      const batch = logQueue; logQueue = [];
+      if (!batch.length) return;
+      if (batch.length === 1) send('log', batch[0]);
+      else send('logBatch', batch);
+    }, 200);
+  });
 
   createWindow();
   buildTray();
@@ -712,8 +752,9 @@ app.whenReady().then(async () => {
   setTimeout(() => autoUpdateTick(true), 6000);
   setInterval(() => autoUpdateTick(false), 60 * 60 * 1000);
 
-  // Периодический опрос состояния (раз в 4 с)
-  setInterval(() => pushState(), 4000);
+  // Периодический опрос состояния: 4 с когда окно открыто, 15 с когда свёрнуто в трей
+  const tick = () => { pushState(); setTimeout(tick, uiOnScreen ? 4000 : 15000); };
+  setTimeout(tick, 4000);
 
   process.on('uncaughtException', e => log.error('ERR', 'uncaught: ' + (e && e.message)));
   process.on('unhandledRejection', e => log.error('ERR', 'unhandled: ' + (e && e.message)));

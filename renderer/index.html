@@ -6,6 +6,11 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; font-src 'self'">
 <title>Yume Haze Zapret</title>
 <style>
+/* Когда окно свёрнуто в трей, все CSS-анимации (пульс, вращение кольца, скелетоны)
+   продолжали крутиться впустую и жгли CPU/GPU. */
+html[data-hidden="1"] *, html[data-hidden="1"] *::before, html[data-hidden="1"] *::after{
+  animation-play-state:paused!important;transition:none!important
+}
 :root{
   --bg:#08070f; --bg2:#0e0c18; --panel:rgba(20,18,32,.72); --panel2:rgba(28,25,44,.6);
   --line:rgba(185,162,255,.14); --line2:rgba(185,162,255,.26);
