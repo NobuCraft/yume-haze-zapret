@@ -51,6 +51,10 @@ function paintIcons(root = document) {
   $$('i[data-i]', root).forEach(el => {
     if (!el.firstChild) el.innerHTML = icon(el.dataset.i);
   });
+  // брендовые значки (Discord, GitHub) в сайдбаре и карточках
+  $$('[data-brand]', root).forEach(el => {
+    if (!el.firstChild) el.innerHTML = icon(el.dataset.brand);
+  });
 }
 
 /* ---------------- состояние ---------------- */
@@ -622,28 +626,29 @@ async function doAction(name, btn) {
 
     /* --- обновления --- */
     case 'updCheck': {
-      const r = await withBtn(btn, () => api.updates.check(true));
-      if (r.ok) { renderUpdates(r.info); toast('Проверка завершена', summaryUpdates(r.info)); }
-      else toast('Не удалось проверить', r.error, 'err');
+      const r = await withBtn(btn, () => api.updates.checkComponents(true));
+      if (r && r.ok) { renderUpdates(r.info); toast('Проверка завершена', summaryUpdates(r.info)); }
+      else toast('Не удалось проверить', (r && r.error) || 'нет сети', 'err');
       break;
     }
     case 'updAll': {
-      const r = await withBtn(btn, () => api.updates.install('all'));
-      if (r.ok) toast('Обновление завершено', r.done && r.done.length ? r.done.join(' · ') : 'Всё уже актуально');
-      else toast('Ошибка обновления', r.error, 'err', 9000);
+      const r = await withBtn(btn, () => api.updates.installAll());
+      if (r && r.ok) toast('Обновление завершено', r.done && r.done.length ? r.done.join(' · ') : 'Всё уже актуально');
+      else toast('Ошибка обновления', (r && r.error) || '', 'err', 9000);
       loadState();
+      if (ui.page === 'updates') renderUpdates(null);
       break;
     }
     case 'installZapret': {
       const r = await withBtn(btn, () => api.updates.install('zapret'));
-      if (r.ok) toast('Zapret установлен', 'Версия ' + (r.version || '1.10.4'));
+      if (r && r.ok) toast('Zapret установлен', 'Версия ' + (r.version || 'последняя'));
       else toast('Ошибка установки', r.error, 'err', 9000);
       loadState();
       break;
     }
     case 'installTg': {
       const r = await withBtn(btn, () => api.updates.install('tg'));
-      if (r.ok) toast('TG WS Proxy установлен', r.version || '');
+      if (r && r.ok) toast('TG WS Proxy установлен', r.version || '');
       else toast('Ошибка установки', r.error, 'err', 9000);
       loadState();
       break;

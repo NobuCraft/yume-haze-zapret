@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const {
-  IS_WIN, exec, downloadWithMirrors, findProcessByName, killByName, serviceState, sc, decodeConsole,
+  IS_WIN, exec, downloadWithMirrors, getJson, findProcessByName, killByName, serviceState, sc, decodeConsole,
   paths, ensureDir, findFiles, rmrf, runElevated, psQuote, isAdmin, httpGet, tasklist
 } = require('./util');
 const config = require('./config');
@@ -12,7 +12,43 @@ const log = require('./logger');
 const { STRATEGIES, ZAPRET_VERSION, gameFilterModeToFlag } = require('./assets/strategies');
 
 const WINWS = 'winws.exe';
-const ZIP_URL = `https://github.com/Flowseal/zapret-discord-youtube/releases/download/${ZAPRET_VERSION}/zapret-discord-youtube-${ZAPRET_VERSION}.zip`;
+const RELEASES_API = 'https://api.github.com/repos/Flowseal/zapret-discord-youtube/releases?per_page=15';
+let releaseCache = null;      // последний найденный релиз { version, url, notes, publishedAt, at }
+
+/* Последний стабильный релиз Zapret с GitHub (кэш 10 минут).
+   Раньше версия была жёстко зашита (1.10.4) и новые релизы Flowseal не подхватывались. */
+async function latestRelease({ force = false } = {}) {
+  if (!force && releaseCache && Date.now() - releaseCache.at < 10 * 60 * 1000) return releaseCache;
+  try {
+    const rels = await getJson(RELEASES_API, config.get().app.useMirror);
+    const list = Array.isArray(rels) ? rels : [rels];
+    const stable = list.find(r => r && !r.prerelease && !r.draft && r.tag_name);
+    if (!stable) throw new Error('нет стабильных релизов');
+    const version = String(stable.tag_name).replace(/^v/, '');
+    const asset = (stable.assets || []).find(a => /zapret-discord-youtube.*\.zip$/i.test(a.name))
+      || (stable.assets || []).find(a => /\.zip$/i.test(a.name));
+    const info = {
+      at: Date.now(),
+      version,
+      tag: stable.tag_name,
+      url: asset ? asset.browser_download_url
+        : `https://github.com/Flowseal/zapret-discord-youtube/releases/download/${stable.tag_name}/zapret-discord-youtube-${version}.zip`,
+      page: stable.html_url,
+      notes: stable.body || '',
+      publishedAt: stable.published_at
+    };
+    releaseCache = info;
+    log.tech('ZAPRET', `последний релиз Zapret: ${version}`);
+    return info;
+  } catch (e) {
+    log.warn('ZAPRET', 'GitHub API недоступен, использую закреплённую версию ' + ZAPRET_VERSION + ': ' + e.message);
+    return releaseCache || {
+      at: Date.now(), version: ZAPRET_VERSION, tag: ZAPRET_VERSION,
+      url: `https://github.com/Flowseal/zapret-discord-youtube/releases/download/${ZAPRET_VERSION}/zapret-discord-youtube-${ZAPRET_VERSION}.zip`,
+      page: '', notes: '', publishedAt: null, fallback: true
+    };
+  }
+}
 const IPSET_URL = 'https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/refs/heads/main/.service/ipset-service.txt';
 const HOSTS_URL = 'https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/refs/heads/main/.service/hosts';
 
@@ -48,12 +84,14 @@ function installedVersion(d = dir()) {
 async function install({ onProgress } = {}) {
   if (!IS_WIN) throw new Error('Zapret работает только в Windows');
   const target = dir();
-  const zipPath = path.join(paths().downloads, `zapret-${ZAPRET_VERSION}.zip`);
+  const rel = await latestRelease();
+  const version = rel.version || ZAPRET_VERSION;
+  const zipPath = path.join(paths().downloads, `zapret-${version}.zip`);
   const tmpDir = path.join(paths().downloads, 'zapret-tmp');
 
-  log.info('ZAPRET', `Скачиваю zapret ${ZAPRET_VERSION}…`);
+  log.info('ZAPRET', `Скачиваю zapret ${version}…`);
   if (onProgress) onProgress({ stage: 'download', pct: 5, text: 'Загрузка архива с GitHub' });
-  const dl = await downloadWithMirrors(ZIP_URL, zipPath, {
+  const dl = await downloadWithMirrors(rel.url, zipPath, {
     useMirror: config.get().app.useMirror,
     onProgress: (pct, bytes) => onProgress && onProgress({ stage: 'download', pct: 20, text: `Архив получен (${Math.round(bytes / 1024)} КБ)` })
   });
@@ -92,10 +130,10 @@ async function install({ onProgress } = {}) {
   ensureUserLists(target);
   applyGameFilterFile(target);
   applyIpsetMode(target, config.get().zapret.ipsetMode, { silent: true });
-  if (onProgress) onProgress({ stage: 'done', pct: 100, text: `Zapret ${ZAPRET_VERSION} установлен` });
-  log.ok('ZAPRET', `Zapret ${ZAPRET_VERSION} установлен в ${target}`);
+  if (onProgress) onProgress({ stage: 'done', pct: 100, text: `Zapret ${version} установлен` });
+  log.ok('ZAPRET', `Zapret ${version} установлен в ${target}`);
   syncUserListsToFiles();
-  return { ok: true, dir: target, version: ZAPRET_VERSION };
+  return { ok: true, dir: target, version };
 }
 
 function copyDir(src, dest) {
@@ -1075,7 +1113,7 @@ async function status() {
     installed: has,
     dir: d,
     version: installedVersion(d),
-    expectedVersion: ZAPRET_VERSION,
+    expectedVersion: releaseCache ? releaseCache.version : ZAPRET_VERSION,
     running: pids.length > 0,
     pids,
     startedAt: startedAt && pids.length ? startedAt : null,
@@ -1143,12 +1181,12 @@ function detectExisting() {
 }
 
 module.exports = {
-  WINWS, ZIP_URL, ZAPRET_VERSION, dir, valid, lists, batPath, installedVersion,
+  WINWS, ZAPRET_VERSION, latestRelease, dir, valid, lists, batPath, installedVersion,
   install, start, stop, restart, status, setStrategy, setGameFilter, setIpsetMode,
   applyGameFilterFile, readGameFilter, ipsetState, applyIpsetMode, updateIpset, updateHosts,
   readList, writeList, listInfo, LIST_FILES, installService, removeService,
   clearDiscordCache, diagnostics, toggleCheckUpdates, detectExisting, validateRanges,
-  parseBatArgs, syncUserLists, waitForPids, ensureUserLists, copyDir, ZIP_URL,
+  parseBatArgs, syncUserLists, waitForPids, ensureUserLists, copyDir,
   driverState, driverCheck, removeDriver, driverDiagnostics, driverErrorHint, driverFile, checkSignature,
   spawnWinws, startAsService, removeConflictingDriver, driverServiceInfo, verifyDriverLoads, driverBlockedReason, preflight, explainOutput, explainExit, decodeConsole, driverMissingHint, lastRunInfo, tokenizeArgs
 };

@@ -8,8 +8,6 @@ const log = require('./logger');
 const zapret = require('./zapret');
 const tgws = require('./tgws');
 
-const ZAPRET_RELEASES = 'https://api.github.com/repos/Flowseal/zapret-discord-youtube/releases';
-
 function cacheFile() { return path.join(paths().cache, 'updates.json'); }
 
 function cmp(a, b) {
@@ -37,17 +35,14 @@ async function check({ force = false } = {}) {
     errors: []
   };
 
-  // Zapret releases
+  // Zapret: последний стабильный релиз Flowseal (тот же, что скачивает установка)
   try {
-    const rels = await getJson(ZAPRET_RELEASES + '?per_page=15', cfg.app.useMirror);
-    const stable = rels.find(r => !r.prerelease && !r.draft);
-    if (stable) {
-      out.zapret.latest = stable.tag_name.replace(/^v/, '');
-      out.zapret.notes = (stable.body || '').slice(0, 4000);
-      out.zapret.url = stable.html_url;
-      out.zapret.publishedAt = stable.published_at;
-      out.zapret.assets = (stable.assets || []).map(a => ({ name: a.name, size: a.size, url: a.browser_download_url }));
-    }
+    const rel = await zapret.latestRelease({ force });
+    out.zapret.latest = rel.version;
+    out.zapret.notes = (rel.notes || '').slice(0, 4000);
+    out.zapret.url = rel.page || '';
+    out.zapret.publishedAt = rel.publishedAt;
+    out.zapret.downloadUrl = rel.url;
   } catch (e) {
     out.errors.push('Zapret: ' + e.message);
   }
@@ -98,14 +93,18 @@ async function updateAll({ onProgress } = {}) {
   const done = [];
   if (info.zapret.status !== 'ok' || !zapret.valid()) {
     try {
+      log.info('UPD', `Обновляю Zapret: ${info.zapret.current || '—'} → ${info.zapret.latest}`);
       await zapret.install({ onProgress });
       done.push('Zapret ' + info.zapret.latest);
+      log.ok('UPD', 'Zapret обновлён до ' + info.zapret.latest);
     } catch (e) { log.error('UPD', 'Zapret: ' + e.message); }
   }
   if (info.tg.status !== 'ok' || !tgws.exeExists()) {
     try {
+      log.info('UPD', `Обновляю TG WS Proxy: ${info.tg.current || '—'} → ${info.tg.latest}`);
       await tgws.install({ onProgress });
       done.push('TG WS Proxy ' + info.tg.latest);
+      log.ok('UPD', 'TG WS Proxy обновлён до ' + info.tg.latest);
     } catch (e) { log.error('UPD', 'TG: ' + e.message); }
   }
   return { ok: true, done, info };

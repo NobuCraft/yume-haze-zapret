@@ -1,7 +1,7 @@
 {
   "name": "yume-haze-zapret",
   "productName": "Yume Haze Zapret",
-  "version": "2.1.3",
+  "version": "2.1.4",
   "description": "Графическая оболочка для Zapret (Flowseal) и TG WS Proxy",
   "main": "main.js",
   "author": {

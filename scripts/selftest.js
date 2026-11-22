@@ -307,7 +307,26 @@ async function atest(name, fn) {
     for (const c of handlers) assert.ok(preload.includes(`'${c}'`), 'preload не вызывает канал ' + c);
     assert.ok(checked > 20, 'мало проверенных вызовов: ' + checked);
   });
-  test('кнопки сообщества: Discord и GitHub в сайдбаре', () => {
+  test('версия Zapret берётся из последнего релиза GitHub, а не зашита', () => {
+    const src = fs.readFileSync(path.join(ROOT, 'src', 'zapret.js'), 'utf8');
+    const upd = fs.readFileSync(path.join(ROOT, 'src', 'updates.js'), 'utf8');
+    assert.ok(/async function latestRelease/.test(src), 'нет latestRelease');
+    assert.ok(/api\.github\.com\/repos\/Flowseal\/zapret-discord-youtube\/releases/.test(src), 'нет запроса релизов Flowseal');
+    assert.ok(/const rel = await latestRelease\(\)/.test(src), 'install() не получает последний релиз');
+    assert.ok(/const version = rel\.version/.test(src), 'install() не использует версию релиза');
+    assert.ok(!/downloadWithMirrors\(ZIP_URL/.test(src), 'осталась зашитая ссылка ZIP_URL');
+    assert.ok(/zapret\.latestRelease/.test(upd), 'updates.js не спрашивает последний релиз');
+  });
+  test('автообновление компонентов включено и работает по таймеру', () => {
+    const main = fs.readFileSync(path.join(ROOT, 'main.js'), 'utf8');
+    const conf = fs.readFileSync(path.join(ROOT, 'src', 'config.js'), 'utf8');
+    assert.ok(/autoUpdateTick/.test(main), 'нет функции автообновления');
+    assert.ok(/setInterval\(\(\) => autoUpdateTick\(false\), 60 \* 60 \* 1000\)/.test(main), 'нет ежечасной проверки');
+    assert.ok(/autoInstall\)/.test(main) && /updateAll/.test(main), 'автоустановка не вызывает updateAll');
+    assert.ok(/autoUpdateCheck: true/.test(conf), 'проверка обновлений выключена по умолчанию');
+    assert.ok(/updates:installAll/.test(main), 'нет IPC обновить всё');
+  });
+  test('кнопки сообщества: Discord и GitHub в сайдбаре со значками', () => {
     const html = fs.readFileSync(path.join(ROOT, 'renderer', 'index.html'), 'utf8');
     const app = fs.readFileSync(path.join(ROOT, 'renderer', 'app.js'), 'utf8');
     assert.ok(/data-act="linkDiscord"[\s\S]{0,120}Наш Discord/.test(html), 'нет кнопки Discord в сайдбаре');

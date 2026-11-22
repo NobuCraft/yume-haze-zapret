@@ -105,7 +105,9 @@ contextBridge.exposeInMainWorld('api', {
   /* обновления */
   updates: {
     check: force => call('updates:check', force),
-    install: target => call('updates:install', target)
+    checkComponents: force => call('updates:checkComponents', force),
+    install: target => call('updates:install', target),
+    installAll: () => call('updates:installAll')
   },
 
   /* журнал */

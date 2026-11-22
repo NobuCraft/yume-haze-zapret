@@ -538,6 +538,20 @@ function registerIpc() {
     pushState();
     return ok({ info: updateInfo });
   }));
+  ipcMain.handle('updates:checkComponents', wrap(async (force) => {
+    // принудительно обновляем кэш релизов Zapret и TG, затем проверяем заново
+    try { await zapret.latestRelease({ force: true }); } catch (_) {}
+    try { await require('./src/tgws').latestRelease(); } catch (_) {}
+    updateInfo = await updates.check({ force: true });
+    pushState();
+    return ok({ info: updateInfo });
+  }));
+  ipcMain.handle('updates:installAll', wrap(async () => {
+    const r = await updates.updateAll({ onProgress: p => send('progress', { target: 'updates', ...p }) });
+    updateInfo = await updates.check({ force: true });
+    pushState(); refreshTray();
+    return ok(r);
+  }));
   ipcMain.handle('updates:install', wrap(async (target) => {
     if (target === 'zapret') {
       const r = await zapret.install({ onProgress: p => send('progress', { target: 'zapret', ...p }) });
@@ -655,22 +669,33 @@ app.whenReady().then(async () => {
   if (bootCmd) setTimeout(() => runDeepLink(bootCmd), 2500);
   else setTimeout(() => startServicesIfNeeded(), 1500);
 
-  if (config.get().app.autoUpdateCheck) {
-    setTimeout(async () => {
-      try {
-        updateInfo = await updates.check({ force: false });
-        const n = updates.pendingCount(updateInfo);
-        if (n > 0) {
-          log.info('UPD', `Доступны обновления компонентов: ${n}`);
+  // Обновления компонентов: проверяем при старте и раз в час.
+  // Если включена автоустановка — Zapret и TG WS Proxy обновляются сами.
+  async function autoUpdateTick(first = false) {
+    if (!config.get().app.autoUpdateCheck) return;
+    try {
+      updateInfo = await updates.check({ force: !first });
+      const n = updates.pendingCount(updateInfo);
+      if (n > 0) {
+        log.info('UPD', `Доступны обновления компонентов: ${n} — ${updateInfo.zapret.status} Zapret ${updateInfo.zapret.current || '—'}→${updateInfo.zapret.latest}, ${updateInfo.tg.status} TG ${updateInfo.tg.current || '—'}→${updateInfo.tg.latest}`);
+        if (config.get().app.autoInstall) {
+          log.info('UPD', 'Автоустановка включена — обновляю компоненты');
+          notify('Обновления', 'Скачиваю новые версии Zapret и TG WS Proxy…');
+          const r = await updates.updateAll({ onProgress: p => send('progress', { target: 'updates', ...p }) });
+          if (r.done && r.done.length) {
+            log.ok('UPD', 'Обновлено: ' + r.done.join(', '));
+            notify('Обновления установлены', r.done.join(', '));
+            updateInfo = r.info;
+          }
+        } else {
           notify('Доступны обновления', 'Откройте раздел «Обновления», чтобы установить их.');
         }
-        pushState();
-      } catch (e) { log.warn('UPD', 'Проверка обновлений: ' + e.message); }
-    }, 6000);
-    setInterval(async () => {
-      try { updateInfo = await updates.check({ force: true }); pushState(); } catch (_) {}
-    }, 6 * 3600 * 1000);
+      }
+      pushState();
+    } catch (e) { log.warn('UPD', 'Проверка обновлений: ' + e.message); }
   }
+  setTimeout(() => autoUpdateTick(true), 6000);
+  setInterval(() => autoUpdateTick(false), 60 * 60 * 1000);
 
   // Периодический опрос состояния (раз в 4 с)
   setInterval(() => pushState(), 4000);
