@@ -59,7 +59,8 @@ async function check({ force = false } = {}) {
     out.errors.push('TG WS Proxy: ' + e.message);
   }
 
-  out.zapret.current = zapret.installedVersion();
+  out.zapret.current = zapret.installedVersion()
+    || (zapret.valid() ? (zapret.releaseKnown() || out.zapret.latest) : null);
   out.tg.current = tgws.installedVersion() || (tgws.exeExists() ? out.tg.latest : null);
   out.zapret.status = !out.zapret.current ? 'install'
     : cmp(out.zapret.latest, out.zapret.current) > 0 ? 'update' : 'ok';
@@ -98,7 +99,7 @@ function appUpdate(info) {
 async function updateAll({ onProgress } = {}) {
   const info = await check({ force: true });
   const done = [];
-  if (info.zapret.status !== 'ok' || !zapret.valid()) {
+  if (info.zapret.status === 'update' || !zapret.valid()) {
     try {
       log.info('UPD', `Обновляю Zapret: ${info.zapret.current || '—'} → ${info.zapret.latest}`);
       await zapret.install({ onProgress });
@@ -106,7 +107,8 @@ async function updateAll({ onProgress } = {}) {
       log.ok('UPD', 'Zapret обновлён до ' + info.zapret.latest);
     } catch (e) { log.error('UPD', 'Zapret: ' + e.message); }
   }
-  if (info.tg.status !== 'ok' || !tgws.exeExists()) {
+  // TG ставим только если файла нет или версия старее — работающий прокси не трогаем
+  if (!tgws.exeExists() || info.tg.status === 'update') {
     try {
       log.info('UPD', `Обновляю TG WS Proxy: ${info.tg.current || '—'} → ${info.tg.latest}`);
       await tgws.install({ onProgress });

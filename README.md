@@ -1,4 +1,4 @@
-# Yume Haze Zapret 2.1.6
+# Yume Haze Zapret 2.1.7
 
 Полноценное Windows-приложение (Electron) — графическая оболочка для **Zapret**
 ([Flowseal/zapret-discord-youtube 1.10.4](https://github.com/Flowseal/zapret-discord-youtube/releases/tag/1.10.4))

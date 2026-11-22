@@ -117,8 +117,13 @@ async function latestRelease() {
   return info;
 }
 
-async function install({ onProgress } = {}) {
+async function install({ onProgress, force = false } = {}) {
   if (!IS_WIN) throw new Error('TG WS Proxy работает только в Windows');
+  // повторная установка при уже работающем прокси — только по явному запросу
+  if (!force && exeExists() && (await isOurProxyRunning())) {
+    log.info('TG', 'TG WS Proxy уже установлен и запущен — повторная установка не нужна');
+    return { ok: true, version: installedVersion() || PINNED_VERSION, path: bin(), skipped: true };
+  }
   let rel;
   try {
     rel = await latestRelease();
@@ -193,6 +198,7 @@ async function start() {
   if (cfgWritten.secret && cfgWritten.secret !== t.secret) config.patch({ tg: { secret: cfgWritten.secret } });
 
   log.info('TG', `Запуск: TgWsProxy.exe (порт ${cfgWritten.port}, секрет ${String(cfgWritten.secret || '').slice(0, 6)}…, pool ${cfgWritten.pool_size})`);
+  resetIssues();
   child = spawn(bin(), [], {
     cwd: path.dirname(bin()), windowsHide: true, detached: false,
     stdio: ['ignore', 'pipe', 'pipe']
@@ -227,6 +233,16 @@ async function start() {
 
 let logWatch = null;      // fs.watch на proxy.log
 let logReadPos = 0;       // позиция чтения файла
+/* Сводка проблем из журнала прокси — показываем в диагностике понятным текстом. */
+const issues = { badHandshake: 0, cfTimeout: 0, h2Timeout: 0, lastAt: 0 };
+function resetIssues() { issues.badHandshake = 0; issues.cfTimeout = 0; issues.h2Timeout = 0; issues.lastAt = 0; }
+function noteIssue(line) {
+  let hit = false;
+  if (/bad handshake/i.test(line)) { issues.badHandshake++; hit = true; }
+  if (/CF proxy failed|media CF proxy failed/i.test(line)) { issues.cfTimeout++; hit = true; }
+  if (/H2 .*setup timed out|H2 setup timed out/i.test(line)) { issues.h2Timeout++; hit = true; }
+  if (hit) issues.lastAt = Date.now();
+}
 
 /* tray-сборка TgWsProxy пишет журнал в TgWsProxy_data/proxy.log, а не в stdout.
    Читаем файл и кормим тем же парсером, что и stdout. */
@@ -286,6 +302,7 @@ function onOutput(buf) {
     if (!l) continue;
     recent.push({ ts: Date.now(), text: l });
     if (recent.length > 400) recent.shift();
+    noteIssue(l);
     const m = l.match(/stats:\s*(.+)$/);
     if (m) { parseStats(m[1]); continue; }
     if (/Listening on|Secret:|Connect:|CF proxy|CF H2|Target DC|DC\d:|TLS|error|Error|ERROR|warn/i.test(l)) {
@@ -504,6 +521,20 @@ async function diagnostics() {
       : `в файле порт ${j.port}, секрет ${j.secret ? 'есть' : 'нет'} — перезапустите прокси`;
   } catch (_) {}
   push('config.json', cfgOk ? 'ok' : 'warn', cfgDetail, 'Нажмите «Перезапустить» — файл будет создан заново из настроек.');
+
+  // Проблемы, которые видны только в журнале прокси
+  if (issues.cfTimeout > 0) {
+    push('Cloudflare-прокси (CF)', 'bad', `${issues.cfTimeout} таймаутов — резервный маршрут через Cloudflare не работает`,
+      'По рекомендации Flowseal: 1) включите «Выключить TLS для CF-прокси»; 2) если используете Zapret — добавьте co.uk в list-exclude-user (или наоборот в list-general-user).');
+  }
+  if (issues.h2Timeout > 0) {
+    push('HTTP/2 медиа', 'warn', `${issues.h2Timeout} таймаутов настройки H2 — медиа временно идёт через WebSocket`,
+      'Обычно лечится тем же «Выключить TLS для CF-прокси»; можно отключить «Мультиплексирование медиа (HTTP/2)».');
+  }
+  if (issues.badHandshake > 0) {
+    push('Секрет / handshake', 'warn', `${issues.badHandshake} неудачных handshake — к прокси стучится клиент с другим секретом`,
+      'Нажмите «Подключить в Telegram» заново (старое подключение с прежним секретом остаётся в Telegram — удалите его вручную в настройках прокси).');
+  }
   return { items };
 }
 
@@ -511,5 +542,6 @@ module.exports = {
   RELEASE_API, PINNED_VERSION, ASSET, DC_INFO,
   latestRelease, install, installedVersion, start, stop, restart, status, link, newSecret,
   saveSettings, validateTg, pingDc, dcStatus, diagnostics, buildArgs, portOpen, parseStats, exeExists,
-  trayConfig, writeTrayConfig, readTraySecret, readTrayPort, configFile, dataDir, fakeTlsSupported
+  trayConfig, writeTrayConfig, readTraySecret, readTrayPort, configFile, dataDir, fakeTlsSupported,
+  issues
 };

@@ -350,6 +350,17 @@ function registerIpc() {
   ipcMain.handle('settings:get', wrap(async () => ok({ settings: config.get() })));
   ipcMain.handle('settings:patch', wrap(async (patch) => {
     const cfg = config.patch(patch);
+    // настройки TG влияют на запущенный прокси — перезапускаем, чтобы config.json обновился
+    if (patch && patch.tg) {
+      try {
+        const t = await tgws.status();
+        if (t.running) {
+          log.info('TG', 'Настройки прокси изменены — перезапускаю');
+          await tgws.restart();
+          pushState();
+        }
+      } catch (e) { log.warn('TG', 'Перезапуск после смены настроек: ' + e.message); }
+    }
     if (patch && patch.app && 'runAtLogin' in patch.app) applyLoginItem(cfg.app.runAtLogin);
     if (patch && patch.app && 'closeToTray' in patch.app) { /* применяется при закрытии */ }
     log.info('APP', 'Настройки сохранены');

@@ -847,6 +847,7 @@ table.tbl .num{font-family:var(--mono);text-align:right;white-space:nowrap}
             <div class="mt">
               <div class="set"><div class="t"><b>Cloudflare-прокси</b><span>Резервный маршрут через cfproxy, если прямой WebSocket недоступен</span></div><button class="tgl on" data-tgl="tg.cfproxy"></button></div>
               <div class="set"><div class="t"><b>Мультиплексирование медиа (HTTP/2)</b><span>Медиа идёт через /api по одному соединению с Cloudflare</span></div><button class="tgl on" data-tgl="tg.h2"></button></div>
+              <div class="set"><div class="t"><b>Выключить TLS для CF-прокси</b><span>Рекомендация Flowseal при ошибках «CF proxy failed: TimeoutError» — попробуйте включить, если прокси не подключается</span></div><button class="tgl" data-tgl="tg.noSecure"></button></div>
               <div class="set"><div class="t"><b>Запускать вместе с приложением</b><span>Прокси поднимается сразу после старта Yume Haze</span></div><button class="tgl on" data-tgl="tg.autostartWithApp"></button></div>
               <div class="set"><div class="t"><b>Подробный лог</b><span>Писать каждое соединение в журнал</span></div><button class="tgl" data-tgl="tg.verbose"></button></div>
             </div>

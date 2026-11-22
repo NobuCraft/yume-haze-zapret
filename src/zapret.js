@@ -517,6 +517,23 @@ async function startAsService(file) {
   return { ok: true, asService: true, state };
 }
 
+function escapeRe(str) { return String(str || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+/* Версия установленного Zapret по версии самого winws.exe (в журнале он печатает
+   «github version v72.9»). Нужна, когда релиз не содержит version.txt. */
+function exeVersion() {
+  try {
+    const exe = path.join(dir(), 'bin', WINWS);
+    if (!fs.existsSync(exe)) return null;
+    const { execFileSync } = require('child_process');
+    const out = execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command',
+      `(Get-Item -LiteralPath ${psQuote(exe)}).VersionInfo.FileVersion`],
+      { encoding: 'utf8', timeout: 8000, windowsHide: true });
+    const v = String(out || '').trim();
+    return v || null;
+  } catch (_) { return null; }
+}
+
 /* Информация о службе драйвера: состояние и путь, откуда Windows её грузит. */
 async function driverServiceInfo() {
   const state = await serviceState('WinDivert');
@@ -620,7 +637,11 @@ async function start({ force = false } = {}) {
   try {
     const drvPre = await driverServiceInfo();
     if (drvPre.state !== 'not-installed') {
-      const ours = drvPre.imagePath && /winws\.exe/i.test(drvPre.imagePath);
+      const ours = drvPre.imagePath && (
+        /winws\.exe/i.test(drvPre.imagePath) ||
+        // путь к WinDivert64.sys внутри папки Zapret — службу мог создать сам winws.exe
+        /WinDivert(64|14)?\.sys/i.test(drvPre.imagePath) && new RegExp(escapeRe(dir()), 'i').test(drvPre.imagePath)
+      );
       if (!ours) {
         log.info('ZAPRET', `Найдена служба WinDivert не от нашей программы (${drvPre.imagePath || 'путь неизвестен'}) — удаляю перед запуском`);
         await removeConflictingDriver({ quiet: true });
@@ -1114,6 +1135,7 @@ async function status() {
     dir: d,
     version: installedVersion(d),
     expectedVersion: releaseCache ? releaseCache.version : ZAPRET_VERSION,
+    exeVersion: (() => { try { return exeVersion(); } catch (_) { return null; } })(),
     running: pids.length > 0,
     pids,
     startedAt: startedAt && pids.length ? startedAt : null,
@@ -1182,6 +1204,7 @@ function detectExisting() {
 
 module.exports = {
   WINWS, ZAPRET_VERSION, latestRelease, dir, valid, lists, batPath, installedVersion,
+  releaseKnown: () => (releaseCache ? releaseCache.version : null), exeVersion,
   install, start, stop, restart, status, setStrategy, setGameFilter, setIpsetMode,
   applyGameFilterFile, readGameFilter, ipsetState, applyIpsetMode, updateIpset, updateHosts,
   readList, writeList, listInfo, LIST_FILES, installService, removeService,
