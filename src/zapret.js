@@ -107,8 +107,8 @@ async function install({ onProgress } = {}) {
     log.warn('ZAPRET', 'Встроенный распаковщик: ' + e.message + ' — пробую PowerShell');
     rmrf(tmpDir);
     ensureDir(tmpDir);
-    const ex = await exec('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command',
-      `Expand-Archive -LiteralPath ${psQuote(zipPath)} -DestinationPath ${psQuote(tmpDir)} -Force`], { timeout: 180000 });
+    const ex = await exec('powershell', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-Command',
+      `$ProgressPreference='SilentlyContinue'; Expand-Archive -LiteralPath ${psQuote(zipPath)} -DestinationPath ${psQuote(tmpDir)} -Force`], { timeout: 300000 });
     if (!ex.ok) throw new Error('Не удалось распаковать архив: ' + (e.stderr || ex.stdout).slice(0, 300));
   }
 
@@ -126,13 +126,13 @@ async function install({ onProgress } = {}) {
   ensureDir(target);
   copyDir(root, target);
 
-  if (!valid(target)) throw new Error('В архиве нет bin\\winws.exe');
+  if (!valid(target)) throw new Error('В скачанном архиве нет bin\\winws.exe — возможно, релиз Flowseal изменил структуру. Попробуйте «Обновить» ещё раз.');
   ensureUserLists(target);
   applyGameFilterFile(target);
   applyIpsetMode(target, config.get().zapret.ipsetMode, { silent: true });
   if (onProgress) onProgress({ stage: 'done', pct: 100, text: `Zapret ${version} установлен` });
   log.ok('ZAPRET', `Zapret ${version} установлен в ${target}`);
-  syncUserListsToFiles();
+  try { syncUserLists(); } catch (e) { log.warn('ZAPRET', 'списки: ' + e.message); }
   return { ok: true, dir: target, version };
 }
 

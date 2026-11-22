@@ -381,11 +381,23 @@ async function restart() {
 function link({ ee = false } = {}) {
   const t = config.get().tg;
   const host = t.host === '0.0.0.0' || t.host === '::' ? '127.0.0.1' : t.host;
+  // секрет берём из config.json, если он там есть: так ссылка совпадает с тем, что слушает прокси
+  const secret = readTraySecret() || t.secret;
+  const port = readTrayPort() || t.port;
   if (ee && t.fakeTlsDomain) {
     const domainHex = Buffer.from(t.fakeTlsDomain, 'ascii').toString('hex');
-    return `tg://proxy?server=${host}&port=${t.port}&secret=ee${t.secret}${domainHex}`;
+    return `tg://proxy?server=${host}&port=${port}&secret=ee${secret}${domainHex}`;
   }
-  return `tg://proxy?server=${host}&port=${t.port}&secret=dd${t.secret}`;
+  return `tg://proxy?server=${host}&port=${port}&secret=dd${secret}`;
+}
+
+function readTrayPort() {
+  try {
+    const j = JSON.parse(fs.readFileSync(configFile(), 'utf8'));
+    const p = Number(j.port);
+    if (Number.isInteger(p) && p > 0 && p < 65536) return p;
+  } catch (_) {}
+  return null;
 }
 
 function newSecret() {
@@ -394,6 +406,10 @@ function newSecret() {
   log.info('TG', 'Сгенерирован новый секрет');
   return { ok: true, secret: s, link: link() };
 }
+
+/* tray-сборка TgWsProxy не умеет fake TLS (ee-secret): в её apply_proxy_config такого ключа нет.
+   Если пользователь ввёл домен, ссылка станет ee-формата, а прокси работает с dd-секретом. */
+function fakeTlsSupported() { return false; }
 
 function validateTg(patch) {
   const t = { ...config.get().tg, ...patch };
@@ -409,6 +425,9 @@ function validateTg(patch) {
 async function saveSettings(patch) {
   const err = validateTg(patch);
   if (err) throw new Error(err);
+  if (patch.fakeTlsDomain) {
+    log.warn('TG', 'Fake TLS (ee-секрет) не поддерживается tray-сборкой TgWsProxy — используется обычный dd-секрет. Ссылка остаётся рабочей, маскировки под TLS не будет.');
+  }
   const before = config.get().tg;
   const restartNeeded = ['host', 'port', 'poolSize', 'secret', 'cfproxy', 'h2', 'noSecure', 'fakeTlsDomain', 'cfproxyDomain', 'dcIp']
     .some(k => JSON.stringify(patch[k]) !== JSON.stringify(before[k]) && patch[k] !== undefined);
@@ -492,5 +511,5 @@ module.exports = {
   RELEASE_API, PINNED_VERSION, ASSET, DC_INFO,
   latestRelease, install, installedVersion, start, stop, restart, status, link, newSecret,
   saveSettings, validateTg, pingDc, dcStatus, diagnostics, buildArgs, portOpen, parseStats, exeExists,
-  trayConfig, writeTrayConfig, readTraySecret, configFile, dataDir
+  trayConfig, writeTrayConfig, readTraySecret, readTrayPort, configFile, dataDir, fakeTlsSupported
 };

@@ -320,6 +320,38 @@ async function atest(name, fn) {
     for (const c of handlers) assert.ok(preload.includes(`'${c}'`), 'preload не вызывает канал ' + c);
     assert.ok(checked > 20, 'мало проверенных вызовов: ' + checked);
   });
+  test('после установки Zapret не падает на syncUserListsToFiles', () => {
+    const src = fs.readFileSync(path.join(ROOT, 'src', 'zapret.js'), 'utf8');
+    assert.ok(!/syncUserListsToFiles\s*\(/.test(src), 'вызов несуществующей функции вернулся');
+    // функция syncUserLists должна существовать и экспортироваться
+    assert.ok(/function syncUserLists\s*\(/.test(src), 'нет syncUserLists');
+    assert.ok(/module\.exports[\s\S]*syncUserLists/.test(src), 'syncUserLists не экспортируется');
+    // каждая функция, вызываемая в модуле, определена
+    const called = [...src.matchAll(/^\s{2}([a-zA-Z_$][\w$]*)\(\);/gm)].map(m => m[1]);
+    const defined = new Set([
+      ...[...src.matchAll(/(?:function|const|let|var)\s+([a-zA-Z_$][\w$]*)/g)].map(m => m[1]),
+      ...['stopQuiet', 'try', 'catch']
+    ]);
+    const bad = called.filter(n => !defined.has(n) && !['if', 'for', 'while', 'return'].includes(n));
+    assert.equal(bad.length, 0, 'вызовы несуществующих функций: ' + bad.join(', '));
+  });
+  test('обновления: строка оболочки по репозиторию NobuCraft', () => {
+    const conf = fs.readFileSync(path.join(ROOT, 'src', 'config.js'), 'utf8');
+    const app = fs.readFileSync(path.join(ROOT, 'renderer', 'app.js'), 'utf8');
+    const upd = fs.readFileSync(path.join(ROOT, 'src', 'updates.js'), 'utf8');
+    assert.ok(/repo:\s*'NobuCraft\/yume-haze-zapret'/.test(conf), 'в настройках нет repo');
+    assert.ok(/appUpdate/.test(upd), 'нет appUpdate()');
+    assert.ok(/updApp/.test(app), 'нет карточки/обработчика оболочки');
+    assert.ok(/Yume Haze Zapret \(оболочка\)/.test(app), 'нет строки оболочки в списке обновлений');
+  });
+  test('значки Discord/GitHub вшиты в HTML (не зависят от paintIcons)', () => {
+    const html = fs.readFileSync(path.join(ROOT, 'renderer', 'index.html'), 'utf8');
+    const m = html.match(/<div class="side-social">([\s\S]*?)<\/div>/);
+    assert.ok(m, 'нет блока side-social');
+    assert.equal((m[1].match(/<svg/g) || []).length, 2, 'в кнопках нет обоих значков');
+    assert.ok(/width="18" height="18"/.test(m[1]), 'у значков нет инлайновых размеров');
+    assert.ok(!/data-brand/.test(m[1]), 'осталась пустая заглушка data-brand');
+  });
   test('версия Zapret берётся из последнего релиза GitHub, а не зашита', () => {
     const src = fs.readFileSync(path.join(ROOT, 'src', 'zapret.js'), 'utf8');
     const upd = fs.readFileSync(path.join(ROOT, 'src', 'updates.js'), 'utf8');

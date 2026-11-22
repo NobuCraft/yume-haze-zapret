@@ -639,6 +639,14 @@ async function doAction(name, btn) {
       if (ui.page === 'updates') renderUpdates(null);
       break;
     }
+    case 'updApp': {
+      const r = await withBtn(btn, () => api.updates.checkComponents(true));
+      const A = (r && r.ok && r.info && r.info.app) || null;
+      if (A && A.url) { api.openExternal(A.url); toast('Открываю страницу релиза', A.status === 'update' ? 'Доступна версия ' + A.latest : 'Установлена последняя версия'); }
+      else { api.openExternal('https://github.com/NobuCraft/yume-haze-zapret/releases/latest'); toast('Открываю релизы', 'Страница загрузки установщика'); }
+      loadState();
+      break;
+    }
     case 'installZapret': {
       const r = await withBtn(btn, () => api.updates.install('zapret'));
       if (r && r.ok) toast('Zapret установлен', 'Версия ' + (r.version || 'последняя'));
@@ -1079,7 +1087,23 @@ function renderUpdates(info) {
     : drvState === 'STOPPED' ? '<span class="chip" style="background:rgba(255,207,122,.18);color:#ffe0a5">служба не запускается</span>'
     : '<span class="chip on">грузит winws.exe</span>';
   const drvSys = S.driver && S.driver.sys;
+  // сама оболочка: проверяем релизы в репозитории пользователя
+  const A = (i && i.app) || null;
+  const appStatus = A ? A.status : 'ok';
+  const appUrl = (A && A.url) || 'https://github.com/NobuCraft/yume-haze-zapret/releases/latest';
   $('#compList').innerHTML =
+    `<div class="comp">
+      <div class="ico">${icon('home')}</div>
+      <div class="info"><b>Yume Haze Zapret (оболочка) ${appStatus === 'update'
+          ? '<span class="chip" style="background:rgba(255,207,122,.18);color:#ffe0a5">доступна новая версия</span>'
+          : '<span class="chip on">актуально</span>'}</b>
+        <span>Обновления проверяются по репозиторию NobuCraft/yume-haze-zapret · установщик скачивается с GitHub</span></div>
+      <div class="ver"><b>${esc((A && A.current) || '—')}</b>→ ${esc((A && A.latest) || '—')}</div>
+      <div class="btns">
+        <button class="btn sm ghost" data-act="linkRelease">Скачать установщик</button>
+        <button class="btn sm ${appStatus === 'update' ? 'pri' : ''}" data-act="updApp">${appStatus === 'update' ? 'Открыть установщик' : 'Проверить'}</button>
+      </div>
+    </div>` +
     comp('Zapret', z && z.installed ? z.dir : 'Flowseal/zapret-discord-youtube · обход DPI', i ? i.zapret.current : (z && z.version), i ? i.zapret.latest : (z && z.expectedVersion), i ? i.zapret.status : (z && z.installed ? 'ok' : 'install'), i && i.zapret.notes, i && i.zapret.url, 'installZapret') +
     comp('TG WS Proxy', t && t.installed ? t.path : 'Flowseal/tg-ws-proxy · MTProto через WebSocket', i ? i.tg.current : (t && t.version), i ? i.tg.latest : '—', i ? i.tg.status : (t && t.installed ? 'ok' : 'install'), i && i.tg.notes, i && i.tg.url, 'installTg') +
     `<div class="comp">
@@ -1256,9 +1280,8 @@ $('#adminBanner') && $('#adminBanner').addEventListener('click', e => {
   paintIcons();
   const info = await api.info();
   if (info.ok) {
-    $('#tbVer').textContent = info.version;
-    $('#abS').textContent = info.strategies;
-    $('#abT').textContent = info.tgVersion || '—';
+    if ($('#tbVer')) $('#tbVer').textContent = info.version;
+    if ($('#abVer')) $('#abVer').textContent = info.version;
     S.admin = !!info.admin;
     if (!info.admin) showAdminBanner();
     else { const el = $('#adminBanner'); if (el) el.hidden = true; }

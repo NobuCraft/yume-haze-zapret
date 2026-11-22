@@ -691,6 +691,10 @@ app.whenReady().then(async () => {
           notify('Доступны обновления', 'Откройте раздел «Обновления», чтобы установить их.');
         }
       }
+      if (updates.appUpdate(updateInfo)) {
+        log.info('UPD', `Новая версия оболочки: ${updateInfo.app.current} → ${updateInfo.app.latest}`);
+        notify('Новая версия Yume Haze', `Доступна ${updateInfo.app.latest}. Откройте «Обновления» → скачать установщик.`);
+      }
       pushState();
     } catch (e) { log.warn('UPD', 'Проверка обновлений: ' + e.message); }
   }

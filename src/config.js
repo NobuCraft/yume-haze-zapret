@@ -40,6 +40,7 @@ function defaults() {
       portable: true
     },
     app: {
+      repo: 'NobuCraft/yume-haze-zapret',     // репозиторий оболочки: по нему проверяем обновления
       runAtLogin: false,
       startMinimized: false,
       closeToTray: true,

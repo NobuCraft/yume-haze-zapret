@@ -85,7 +85,14 @@ async function check({ force = false } = {}) {
 
 function pendingCount(info) {
   if (!info) return 0;
+  // только компоненты, которые приложение может поставить само (оболочку — вручную установщиком)
   return [info.zapret, info.tg].filter(c => c && c.status !== 'ok').length;
+}
+
+/* Есть ли новая версия самой оболочки (проверяется по репозиторию пользователя) */
+function appUpdate(info) {
+  const a = info && info.app;
+  return !!(a && a.status === 'update' && a.latest);
 }
 
 async function updateAll({ onProgress } = {}) {
@@ -110,4 +117,5 @@ async function updateAll({ onProgress } = {}) {
   return { ok: true, done, info };
 }
 
-module.exports = { check, pendingCount, updateAll, cmp, cacheFile };
+module.exports = {
+  appUpdate, check, pendingCount, updateAll, cmp, cacheFile };
