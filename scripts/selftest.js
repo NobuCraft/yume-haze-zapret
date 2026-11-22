@@ -320,6 +320,29 @@ async function atest(name, fn) {
     for (const c of handlers) assert.ok(preload.includes(`'${c}'`), 'preload не вызывает канал ' + c);
     assert.ok(checked > 20, 'мало проверенных вызовов: ' + checked);
   });
+  test('видимость окна проверяется синхронно (Promise не должен считаться «скрыто»)', () => {
+    const appSrc = fs.readFileSync(path.join(ROOT, 'renderer', 'app.js'), 'utf8');
+    const start = appSrc.indexOf('function uiVisible()');
+    assert.ok(start > 0, 'нет uiVisible');
+    const body = appSrc.slice(start, appSrc.indexOf('}', start) + 1);
+    assert.ok(!/api\.isMinimized/.test(body), 'uiVisible снова использует асинхронный IPC (Promise = всегда true)');
+    assert.ok(/return !document\.hidden/.test(body), 'uiVisible не опирается на document.hidden');
+  });
+  test('сбой одного блока не оставляет интерфейс пустым', () => {
+    const appSrc = fs.readFileSync(path.join(ROOT, 'renderer', 'app.js'), 'utf8');
+    assert.ok(/function guard\(fn/.test(appSrc), 'нет guard()');
+    assert.ok(/try \{ renderOverviewInner\(z, t\); \} catch/.test(appSrc), 'renderOverview без try/catch');
+    assert.ok(/if \(!z && !t\) return;/.test(appSrc), 'renderOverview рисует пустые данные');
+    // каждый блок страницы обёрнут в guard
+    assert.ok((appSrc.match(/guard\(\(\) => \{/g) || []).length >= 2, 'страницы Zapret/TG не обёрнуты в guard');
+  });
+  test('переход в раздел подгружает его данные', () => {
+    const appSrc = fs.readFileSync(path.join(ROOT, 'renderer', 'app.js'), 'utf8');
+    const block = appSrc.slice(appSrc.indexOf('function refreshDynamic()'), appSrc.indexOf('function refreshDynamic()') + 700);
+    assert.ok(/renderStrategies\(\)/.test(block), 'стратегии не рисуются при входе в раздел');
+    assert.ok(/renderDriver\(\)/.test(block), 'вкладка «Драйвер» не обновляется');
+    assert.ok(/loadList\(ui\.listKind\)/.test(block), 'списки не загружаются');
+  });
   test('оптимизации: опрос процессов кэшируется, тяжёлые поля — не каждый тик', () => {
     const utilSrc = fs.readFileSync(path.join(ROOT, 'src', 'util.js'), 'utf8');
     const zapSrc = fs.readFileSync(path.join(ROOT, 'src', 'zapret.js'), 'utf8');

@@ -58,17 +58,23 @@ function paintIcons(root = document) {
 }
 
 /* ---------------- видимость окна ---------------- */
-/* Пока окно свёрнуто или скрыто в трее, перерисовывать интерфейс незачем:
-   снимок состояния приходит каждые 4 с и renderOverview() трогает сотни узлов. */
+/* ВАЖНО: проверка должна быть синхронной. api.isMinimized() — это ipcRenderer.invoke,
+   то есть Promise; Promise всегда «истина», поэтому окно считалось скрытым ВСЕГДА и
+   состояние (S.zapret / S.tg) не применялось — разделы оставались пустыми.
+   Теперь ориентируемся только на document.hidden (стабильно и без IPC). */
 function uiVisible() {
-  if (document.hidden) return false;
-  try { if (window.api && api.isMinimized && api.isMinimized()) return false; } catch (_) {}
-  return true;
+  return !document.hidden;
+}
+
+/* «Окно активно» — используется только для паузы анимаций (не для данных!). */
+let uiFocused = true;
+function uiActive() {
+  return !document.hidden && uiFocused;
 }
 
 /* Пауза всех CSS-анимаций и переходов, когда окно не на экране. */
 function syncHiddenFlag() {
-  const hidden = !uiVisible();
+  const hidden = !uiActive();
   if (hidden) document.documentElement.dataset.hidden = '1';
   else delete document.documentElement.dataset.hidden;
 }
@@ -772,21 +778,76 @@ function renderTargets() {
 
 /* ---------------- карточки статусов ---------------- */
 function renderOverview(opts = {}) {
-  const light = !!opts.light;   // «лёгкий» тик: только обзор, без скрытых страниц
   const z = S.zapret, t = S.tg;
+  if (!z && !t) return;                   // состояние ещё не пришло — рисовать нечего
+  try { renderOverviewInner(z, t); } catch (e) { console.error('renderOverview', e); }
+}
+
+/* Обёртка: сбой одного блока не должен оставлять интерфейс пустым. */
+function guard(fn, label = '') {
+  try { fn(); } catch (e) { console.error('UI' + (label ? ' · ' + label : ''), e); }
+}
+
+function renderOverviewInner(z, t) {
+  const _abS = $('#abS');
+  const _abT = $('#abT');
+  const _abZ = $('#abZ');
+  const _gTcp = $('#gTcp');
+  const _gUdp = $('#gUdp');
+  const _gameNote = $('#gameNote');
+  const _hero = $('#hero');
+  const _hpTt = $('#hpTt');
+  const _hpZt = $('#hpZt');
+  const _ipCount = $('#ipCount');
+  const _ipDate = $('#ipDate');
+  const _ovBestTag = $('#ovBestTag');
+  const _ovEvents = $('#ovEvents');
+  const _ovRing = $('#ovRing');
+  const _ovRingTxt = $('#ovRingTxt');
+  const _ovStrat = $('#ovStrat');
+  const _ovStratSub = $('#ovStratSub');
+  const _pathT = $('#pathT');
+  const _pathTState = $('#pathTState');
+  const _pathZ = $('#pathZ');
+  const _pathZState = $('#pathZState');
+  const _sdTt = $('#sdTt');
+  const _sdZt = $('#sdZt');
+  const _stateLabel = $('#stateLabel');
+  const _stateSub = $('#stateSub');
+  const _svcTchip = $('#svcTchip');
+  const _svcTmeta = $('#svcTmeta');
+  const _svcZchip = $('#svcZchip');
+  const _svcZmeta = $('#svcZmeta');
+  const _tChip = $('#tChip');
+  const _tgConn = $('#tgConn');
+  const _tgHost = $('#tgHost');
+  const _tgLink = $('#tgLink');
+  const _tgPool = $('#tgPool');
+  const _tgPoolIn = $('#tgPoolIn');
+  const _tgPort = $('#tgPort');
+  const _tgRx = $('#tgRx');
+  const _tgSecret = $('#tgSecret');
+  const _tgTls = $('#tgTls');
+  const _tgTx = $('#tgTx');
+  const _tgUp = $('#tgUp');
+  const _zChip = $('#zChip');
+  const _zMeta = $('#zMeta');
+  const _zStratKv = $('#zStratKv');
+  const _zUp = $('#zUp');
   const zOn = z && z.running, tOn = t && t.running;
   const anyOn = zOn || tOn;
-  $('#hero').classList.toggle('on', !!anyOn);
-  $('#stateLabel').textContent = anyOn ? 'Защита активна' : 'Защита выключена';
+  if (!_hero || !_stateLabel || !_stateSub) return;   // разметка не та — молча выходим
+  _hero.classList.toggle('on', !!anyOn);
+  _stateLabel.textContent = anyOn ? 'Защита активна' : 'Защита выключена';
   const parts = [];
   if (zOn) parts.push('Zapret · ' + (S.settings ? strategyName(S.settings.zapret.strategy) : ''));
   if (tOn) parts.push('прокси на порту ' + (S.settings ? S.settings.tg.port : ''));
-  $('#stateSub').textContent = anyOn ? parts.join(' · ') : 'Включите обход кнопкой питания';
+  _stateSub.textContent = anyOn ? parts.join(' · ') : 'Включите обход кнопкой питания';
 
-  $('#svcZchip').outerHTML = `<span class="chip ${zOn ? 'on' : ''}" id="svcZchip">${z ? (zOn ? 'работает' : 'остановлен') : '—'}</span>`;
-  $('#svcZmeta').textContent = z ? (z.installed ? `${strategyName(z.strategy)} · ${z.running ? dur(Date.now() - (z.startedAt || Date.now())) : 'не запущен'}` : 'не установлен — раздел «Обновления»') : '—';
-  $('#svcTchip').outerHTML = `<span class="chip ${tOn ? 'on' : ''}" id="svcTchip">${t ? (tOn ? 'работает' : 'остановлен') : '—'}</span>`;
-  $('#svcTmeta').textContent = t ? (t.installed ? `127.0.0.1:${t.settings.port} · секрет dd…${t.settings.secret.slice(-4)}` : 'не установлен — раздел «Обновления»') : '—';
+  _svcZchip.outerHTML = `<span class="chip ${zOn ? 'on' : ''}" id="svcZchip">${z ? (zOn ? 'работает' : 'остановлен') : '—'}</span>`;
+  _svcZmeta.textContent = z ? (z.installed ? `${strategyName(z.strategy)} · ${z.running ? dur(Date.now() - (z.startedAt || Date.now())) : 'не запущен'}` : 'не установлен — раздел «Обновления»') : '—';
+  _svcTchip.outerHTML = `<span class="chip ${tOn ? 'on' : ''}" id="svcTchip">${t ? (tOn ? 'работает' : 'остановлен') : '—'}</span>`;
+  _svcTmeta.textContent = t ? (t.installed ? `127.0.0.1:${t.settings.port} · секрет dd…${t.settings.secret.slice(-4)}` : 'не установлен — раздел «Обновления»') : '—';
 
   $$('[data-toggle-svc="z"]').forEach(b => b.classList.toggle('on', !!zOn));
   $$('[data-toggle-svc="t"]').forEach(b => b.classList.toggle('on', !!tOn));
@@ -794,22 +855,22 @@ function renderOverview(opts = {}) {
   /* статусы в шапке и сайдбаре */
   setDot('sdZ', zOn); setDot('sdT', tOn);
   setDot('hpZ', zOn); setDot('hpT', tOn);
-  $('#sdZt').textContent = z ? (zOn ? 'вкл' : z.installed ? 'выкл' : 'нет') : '—';
-  $('#sdTt').textContent = t ? (tOn ? 'вкл' : t.installed ? 'выкл' : 'нет') : '—';
-  $('#hpZt').textContent = zOn ? 'Zapret активен' : 'Zapret выключен';
-  $('#hpTt').textContent = tOn ? 'Прокси активен' : 'Прокси выключен';
+  _sdZt.textContent = z ? (zOn ? 'вкл' : z.installed ? 'выкл' : 'нет') : '—';
+  _sdTt.textContent = t ? (tOn ? 'вкл' : t.installed ? 'выкл' : 'нет') : '—';
+  _hpZt.textContent = zOn ? 'Zapret активен' : 'Zapret выключен';
+  _hpTt.textContent = tOn ? 'Прокси активен' : 'Прокси выключен';
 
   /* стратегия + оценка */
   const strat = S.settings ? S.settings.zapret.strategy : '—';
-  $('#ovStrat').textContent = strategyName(strat);
+  _ovStrat.textContent = strategyName(strat);
   const sc = lastTest ? lastTest.score : (lastPickBest() ? lastPickBest().score : null);
-  $('#ovRing').style.setProperty('--v', sc == null ? 0 : sc);
-  $('#ovRingTxt').textContent = sc == null ? '—' : sc;
+  _ovRing.style.setProperty('--v', sc == null ? 0 : sc);
+  _ovRingTxt.textContent = sc == null ? '—' : sc;
   const svcOk = lastTest ? lastTest.services.filter(s => (s.score != null ? s.score >= 50 : s.ok > 0 && s.ok === s.total)).length : 0;
   const meta = lastTest
     ? `Проверено ${fmtTime(lastTest.ts)} · ${svcOk} из ${lastTest.services.length} сервисов`
     : lastPickBest() ? `Лучший результат автоподбора` : 'Запустите тест доступности';
-  $('#ovStratSub').textContent = meta;
+  _ovStratSub.textContent = meta;
   const tag = $('#ovBestTag');
   if (lastTest) {
     tag.textContent = lastTest.grade === 'good' ? 'рабочая' : lastTest.grade === 'weak' ? 'слабая' : 'не работает';
@@ -817,50 +878,52 @@ function renderOverview(opts = {}) {
 
   /* события */
   const evs = (S.logs || []).slice(-9).reverse();
-  $('#ovEvents').innerHTML = evs.length ? evs.map(e => `
+  _ovEvents.innerHTML = evs.length ? evs.map(e => `
     <div class="ev ${e.level === 'error' ? 'err' : ''}"><time>${fmtTime(e.ts)}</time><span>${esc(e.message)}</span></div>`).join('')
     : '<div class="empty">Событий пока нет</div>';
 
   /* zapret page */
+  guard(() => {
   if (z) {
-    $('#zChip').outerHTML = `<span class="chip ${zOn ? 'on' : ''}" id="zChip">${zOn ? 'работает' : z.installed ? 'остановлен' : 'не установлен'}</span>`;
-    $('#zMeta').textContent = z.installed ? `${z.version} · ${z.dir}` : 'Установите компонент в разделе «Обновления»';
-    $('#zUp').textContent = zOn ? dur(Date.now() - (z.startedAt || Date.now())) : '—';
-    $('#zStratKv').textContent = strategyName(z.strategy);
-    $('#ipCount').textContent = z.ipset ? z.ipset.lines.toLocaleString('ru-RU') : '—';
-    $('#ipDate').textContent = z.ipset && z.ipset.updated ? new Date(z.ipset.updated).toLocaleDateString('ru-RU') : '—';
+    _zChip.outerHTML = `<span class="chip ${zOn ? 'on' : ''}" id="zChip">${zOn ? 'работает' : z.installed ? 'остановлен' : 'не установлен'}</span>`;
+    _zMeta.textContent = z.installed ? `${z.version} · ${z.dir}` : 'Установите компонент в разделе «Обновления»';
+    _zUp.textContent = zOn ? dur(Date.now() - (z.startedAt || Date.now())) : '—';
+    _zStratKv.textContent = strategyName(z.strategy);
+    _ipCount.textContent = z.ipset ? z.ipset.lines.toLocaleString('ru-RU') : '—';
+    _ipDate.textContent = z.ipset && z.ipset.updated ? new Date(z.ipset.updated).toLocaleDateString('ru-RU') : '—';
     $$('[data-opts="game"] .opt').forEach(o => o.classList.toggle('on', o.dataset.v === (z.gameFilter.mode === 'off' ? 'off' : z.gameFilter.mode)));
     $$('[data-opts="ipset"] .opt').forEach(o => o.classList.toggle('on', o.dataset.v === z.ipset.mode));
-    if (document.activeElement !== $('#gTcp') && !$('#gTcp').dataset.dirty) $('#gTcp').value = z.gameFilter.tcp;
-    if (document.activeElement !== $('#gUdp') && !$('#gUdp').dataset.dirty) $('#gUdp').value = z.gameFilter.udp;
-    $('#gameNote').textContent = z.gameFilter.mode === 'off'
+    if (document.activeElement !== $('#gTcp') && !_gTcp.dataset.dirty) _gTcp.value = z.gameFilter.tcp;
+    if (document.activeElement !== $('#gUdp') && !_gUdp.dataset.dirty) _gUdp.value = z.gameFilter.udp;
+    _gameNote.textContent = z.gameFilter.mode === 'off'
       ? 'Игровой фильтр выключен — обход только для веб-трафика'
       : `TCP: ${z.gameFilter.mode === 'off' ? '—' : z.gameFilter.tcp} · UDP: ${z.gameFilter.udp}`;
-    $('#pathZ').value = z.dir || '';
-    $('#pathZState').textContent = z.installed ? `Zapret ${z.version} · найден` : 'не найден';
-    $('#abZ').textContent = z.version || '—';
-    $('#abS').textContent = (z.strategies || []).length;
-  }
+    _pathZ.value = z.dir || '';
+    _pathZState.textContent = z.installed ? `Zapret ${z.version} · найден` : 'не найден';
+    _abZ.textContent = z.version || '—';
+    _abS.textContent = (z.strategies || []).length;
+  } }, 'страница Zapret');
 
   /* tg page */
+  guard(() => {
   if (t) {
-    $('#tChip').outerHTML = `<span class="chip ${tOn ? 'on' : ''}" id="tChip">${tOn ? 'работает' : t.installed ? 'остановлен' : 'не установлен'}</span>`;
-    if (document.activeElement !== $('#tgLink')) $('#tgLink').value = t.link;
-    if (document.activeElement !== $('#tgSecret')) $('#tgSecret').value = t.settings.secret;
-    if (document.activeElement !== $('#tgHost')) $('#tgHost').value = t.settings.host;
-    if (document.activeElement !== $('#tgPort')) $('#tgPort').value = t.settings.port;
-    if (document.activeElement !== $('#tgPoolIn')) $('#tgPoolIn').value = t.settings.poolSize;
-    if (document.activeElement !== $('#tgTls')) $('#tgTls').value = t.settings.fakeTlsDomain || '';
-    $('#tgUp').textContent = tOn ? dur(Date.now() - (t.startedAt || Date.now())) : 'остановлен';
-    $('#tgConn').textContent = t.stats.total || 0;
-    $('#tgPool').textContent = `${t.settings.poolSize} / 16`;
-    $('#tgRx').textContent = bytes(t.stats.down);
-    $('#tgTx').textContent = bytes(t.stats.up);
-    $('#pathT').value = t.path || '';
-    $('#pathTState').textContent = t.installed ? `Найден${t.version ? ' · ' + t.version : ''}` : 'не найден';
-    $('#abT').textContent = t.version || '—';
+    _tChip.outerHTML = `<span class="chip ${tOn ? 'on' : ''}" id="tChip">${tOn ? 'работает' : t.installed ? 'остановлен' : 'не установлен'}</span>`;
+    if (document.activeElement !== $('#tgLink')) _tgLink.value = t.link;
+    if (document.activeElement !== $('#tgSecret')) _tgSecret.value = t.settings.secret;
+    if (document.activeElement !== $('#tgHost')) _tgHost.value = t.settings.host;
+    if (document.activeElement !== $('#tgPort')) _tgPort.value = t.settings.port;
+    if (document.activeElement !== $('#tgPoolIn')) _tgPoolIn.value = t.settings.poolSize;
+    if (document.activeElement !== $('#tgTls')) _tgTls.value = t.settings.fakeTlsDomain || '';
+    _tgUp.textContent = tOn ? dur(Date.now() - (t.startedAt || Date.now())) : 'остановлен';
+    _tgConn.textContent = t.stats.total || 0;
+    _tgPool.textContent = `${t.settings.poolSize} / 16`;
+    _tgRx.textContent = bytes(t.stats.down);
+    _tgTx.textContent = bytes(t.stats.up);
+    _pathT.value = t.path || '';
+    _pathTState.textContent = t.installed ? `Найден${t.version ? ' · ' + t.version : ''}` : 'не найден';
+    _abT.textContent = t.version || '—';
     renderDc();
-  }
+  } }, 'страница TG');
   // Раньше здесь на КАЖДОМ тике (раз в 4 с) перерисовывался список из 22 стратегий
   // и таблица дата-центров — даже когда эти страницы не открыты.
   if (ui.page === 'zapret') { renderStrategies(); }
@@ -1210,8 +1273,19 @@ async function loadState() {
 }
 
 function refreshDynamic() {
-  renderOverview();
+  if (!uiVisible()) return;
+  renderOverview();                       // обзор + общие элементы (шапка, чипы, сайдбар)
   if (ui.page === 'console') renderLogs();
+  if (ui.page === 'zapret') {
+    renderStrategies();
+    renderDriver();                       // содержимое вкладки «Драйвер»
+    loadList(ui.listKind);                // списки доменов
+  }
+  if (ui.page === 'tests') {
+    if (!$('#histList').childElementCount) loadHistory();
+    renderPickList();
+  }
+  if (ui.page === 'updates') renderUpdates(null);
 }
 
 /* ---------------- события из main ---------------- */
@@ -1309,6 +1383,7 @@ api.onMaximized(() => {});
 
 /* Вернулись в окно — досрочно догоняем состояние, пропущенное пока были свёрнуты. */
 document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && !uiFocused) uiFocused = document.hasFocus();
   syncHiddenFlag();
   if (uiVisible() && S.dirty) {
     S.dirty = false;
@@ -1316,8 +1391,9 @@ document.addEventListener('visibilitychange', () => {
     if (ui.page === 'console') renderLogs();
   }
 });
-window.addEventListener('blur', () => { syncHiddenFlag(); });
+window.addEventListener('blur', () => { uiFocused = false; syncHiddenFlag(); });
 window.addEventListener('focus', () => {
+  uiFocused = true;
   syncHiddenFlag();
   if (uiVisible() && S.dirty) {
     S.dirty = false;
