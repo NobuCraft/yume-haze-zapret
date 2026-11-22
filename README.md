@@ -1,4 +1,4 @@
-# Yume Haze Zapret 2.1.2
+# Yume Haze Zapret 2.1.3
 
 Полноценное Windows-приложение (Electron) — графическая оболочка для **Zapret**
 ([Flowseal/zapret-discord-youtube 1.10.4](https://github.com/Flowseal/zapret-discord-youtube/releases/tag/1.10.4))
@@ -29,8 +29,9 @@ npm start
 Установщик собирается локально командой `npm run dist:nsis` → `release/YumeHazeZapret-<версия>-setup.exe`
 (NSIS, x64, ~81 МБ).
 
-Готовый файл текущей версии: **`YumeHazeZapret-2.1.2-setup.exe`**
-SHA-256 `b2c8c9c4f8104d1fc4012b00226ea8be574658e84c4958f3e96687c0f3dea64e`.
+Готовый файл текущей версии — в разделе [Releases](https://github.com/NobuCraft/yume-haze-zapret/releases/latest).
+
+Сообщество: [Discord](https://discord.gg/qHabsmgKVP) · [GitHub](https://github.com/NobuCraft/yume-haze-zapret)
 
 Установщик ставится по-пользовательски (без UAC), создаёт ярлыки на рабочем столе и в меню «Пуск»,
 удаляется через «Приложения и возможности». Для боевого режима запускайте ярлык

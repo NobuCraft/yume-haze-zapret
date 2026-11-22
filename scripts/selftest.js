@@ -307,6 +307,19 @@ async function atest(name, fn) {
     for (const c of handlers) assert.ok(preload.includes(`'${c}'`), 'preload не вызывает канал ' + c);
     assert.ok(checked > 20, 'мало проверенных вызовов: ' + checked);
   });
+  test('кнопки сообщества: Discord и GitHub в сайдбаре', () => {
+    const html = fs.readFileSync(path.join(ROOT, 'renderer', 'index.html'), 'utf8');
+    const app = fs.readFileSync(path.join(ROOT, 'renderer', 'app.js'), 'utf8');
+    assert.ok(/data-act="linkDiscord"[\s\S]{0,120}Наш Discord/.test(html), 'нет кнопки Discord в сайдбаре');
+    assert.ok(/data-act="linkGithub"[\s\S]{0,120}Наш GitHub/.test(html), 'нет кнопки GitHub в сайдбаре');
+    const sd = html.indexOf('data-go="about"'), ss = html.indexOf('<div class="side-social">');
+    assert.ok(ss > sd, 'кнопки сообщества должны быть ниже пункта «О программе»');
+    assert.ok(/discord\.gg\/qHabsmgKVP/.test(app), 'неверная ссылка Discord');
+    assert.ok(/github\.com\/NobuCraft\/yume-haze-zapret/.test(app), 'неверная ссылка GitHub');
+    assert.ok(/^\s{2}discord:/m.test(app), 'нет иконки discord');
+    assert.ok(/^\s{2}github:/m.test(app), 'нет иконки github');
+  });
+
   test('QR-код убран со страницы TG WS Proxy', () => {
     const html = fs.readFileSync(path.join(ROOT, 'renderer', 'index.html'), 'utf8');
     const app = fs.readFileSync(path.join(ROOT, 'renderer', 'app.js'), 'utf8');
