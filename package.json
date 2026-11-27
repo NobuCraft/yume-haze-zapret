@@ -1,21 +1,28 @@
 {
   "name": "yume-haze-zapret",
   "productName": "Yume Haze Zapret",
-  "version": "2.2.1",
+  "version": "2.3.0",
   "description": "Графическая оболочка для Zapret (Flowseal) и TG WS Proxy",
   "main": "main.js",
   "author": {
-    "name": "Yume Haze"
+    "name": "Yume Haze",
+    "email": "nobucraft@users.noreply.github.com"
   },
   "license": "MIT",
   "scripts": {
     "start": "electron .",
     "selftest": "node scripts/selftest.js",
+    "dist:win": "electron-builder --win nsis portable --x64",
+    "test:ui": "xvfb-run -a node scripts/ui-check.js",
+    "test:smoke": "xvfb-run -a node scripts/electron-smoke.js",
     "assets": "node scripts/gen-assets.js",
     "dist": "electron-builder --win nsis portable --x64",
     "dist:nsis": "electron-builder --win nsis --x64",
     "dist:portable": "electron-builder --win portable --x64",
-    "pack": "electron-builder --win --dir"
+    "pack": "electron-builder --win --dir",
+    "dist:linux": "electron-builder --linux AppImage deb tar.gz --x64",
+    "linux:engine": "make -C linux/engine",
+    "test:linux": "node scripts/linux-test.js"
   },
   "devDependencies": {
     "electron": "^33.2.0",
@@ -36,6 +43,8 @@
       "src/**/*",
       "renderer/**/*",
       "res/icon.ico",
+      "res/icon.png",
+      "linux/**/*",
       "package.json"
     ],
     "win": {
@@ -57,7 +66,7 @@
       "requestedExecutionLevel": "asInvoker"
     },
     "nsis": {
-      "artifactName": "YumeHazeZapret-${version}-setup.${ext}",
+      "artifactName": "YumeHazeZapret-${version}-${arch}-setup.${ext}",
       "oneClick": false,
       "perMachine": false,
       "allowElevation": true,
@@ -73,9 +82,53 @@
       "installerHeaderIcon": "res/icon.ico"
     },
     "portable": {
-      "artifactName": "YumeHazeZapret-${version}-portable.${ext}",
+      "artifactName": "YumeHazeZapret-${version}-${arch}-portable.${ext}",
       "requestExecutionLevel": "user",
       "unpackDirName": "YumeHazeZapret"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "tar.gz",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "YumeHazeZapret-${version}-${arch}.${ext}",
+      "icon": "res/icon.png",
+      "category": "Network",
+      "synopsis": "Обход блокировок для Windows и Linux",
+      "description": "Yume Haze Zapret — графическая оболочка для zapret (Flowseal): обход блокировок Discord, YouTube и других сервисов. Работает в Windows и Linux.",
+      "desktop": {
+        "entry": {
+          "Name": "Yume Haze Zapret",
+          "Comment": "Обход блокировок Discord и YouTube",
+          "Categories": "Network;Utility;",
+          "Keywords": "zapret;vpn;proxy;discord;youtube;"
+        }
+      },
+      "maintainer": "Yume Haze <nobucraft@users.noreply.github.com>"
     }
+  },
+  "homepage": "https://github.com/NobuCraft/yume-haze-zapret",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/NobuCraft/yume-haze-zapret.git"
+  },
+  "bugs": {
+    "url": "https://github.com/NobuCraft/yume-haze-zapret/issues"
   }
 }

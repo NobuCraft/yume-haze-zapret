@@ -7,10 +7,30 @@ const fs = require('fs');
 const util = require('./src/util');
 const config = require('./src/config');
 const log = require('./src/logger');
-const zapret = require('./src/zapret');
-const tgws = require('./src/tgws');
+const zapret = process.platform === 'linux' ? require('./src/zapret-linux') : require('./src/zapret');
+/* TG WS Proxy — Windows-бинарь. В Linux-сборке подменяем заглушкой:
+   интерфейс показывает «только Windows» вместо ошибки «не удалось запустить». */
+const TG_STUB = {
+  available: false,
+  PINNED_VERSION: '—',
+  exeExists: () => false,
+  installedVersion: () => null,
+  status: async () => ({ running: false, available: false, installed: false, version: null, platform: 'linux' }),
+  start: async () => ({ ok: false, error: 'TG WS Proxy доступен только в Windows' }),
+  stop: async () => ({ ok: true }),
+  restart: async () => ({ ok: false, error: 'только Windows' }),
+  install: async () => ({ ok: false, error: 'только Windows' }),
+  latestRelease: async () => ({ tag: '—', notes: '', size: 0 }),
+  setConfig: async () => ({ ok: false, error: 'только Windows' }),
+  config: () => ({}),
+  logTail: () => [],
+  openTelegram: async () => ({ ok: false, error: 'только Windows' }),
+  link: () => ''
+};
+const tgws = process.platform === 'linux' ? TG_STUB : require('./src/tgws');
 const net = require('./src/net');
 const updates = require('./src/updates');
+
 
 const IS_WIN = process.platform === 'win32';
 let win = null;
@@ -56,6 +76,7 @@ function createWindow() {
     minHeight: 680,
     show: false,
     frame: false,
+    paintWhenInitiallyHidden: false,
     backgroundColor: '#0a0912',
     title: 'Yume Haze Zapret',
     icon: path.join(__dirname, 'res', 'icon.ico'),
@@ -200,9 +221,15 @@ let pushTimer = null;
 let uiOnScreen = false;
 let lastDrvAt = 0;        // когда последний раз считали диагностику драйвера
 let cachedDrv = null;
+let pushBusy = false;     // тяжёлый снимок уже считается — не наслаиваем
+let pushQueued = false;
 function pushState() {
   clearTimeout(pushTimer);
   pushTimer = setTimeout(async () => {
+    // Раньше одновременно могло идти несколько снимков (тик 4 с, кнопка, трей):
+    // каждый поднимал tasklist/sc/PowerShell, и главный процесс «толстел».
+    if (pushBusy) { pushQueued = true; return; }
+    pushBusy = true;
     try {
       const [z, t] = await Promise.all([zapret.status(), tgws.status()]);
       // Диагностику драйвера (PowerShell для проверки подписи + sc query) гоняем только
@@ -220,9 +247,14 @@ function pushState() {
         logs: uiOnScreen ? log.list() : [],
         update: updateInfo ? updates.pendingCount(updateInfo) : 0,
         admin: await util.isAdmin(),
-        driver: drv ? { service: drv.service, version: drv.sys && drv.sys.version, sys: drv.sys, dll: drv.dll, signature: drv.signature, running: drv.running, ok: drv.ok, hint: drv.hint } : null
+        driver: drv ? { service: drv.service, version: drv.sys && drv.sys.version, sys: drv.sys, dll: drv.dll, signature: drv.signature, running: drv.running, ok: drv.ok, hint: drv.hint } : null,
+        heartbeat: Date.now()
       });
     } catch (e) { log.error('APP', 'состояние: ' + e.message); }
+    finally {
+      pushBusy = false;
+      if (pushQueued) { pushQueued = false; pushState(); }
+    }
   }, 120);
 }
 
@@ -324,12 +356,41 @@ function registerIpc() {
   ipcMain.handle('app:info', wrap(async () => ok({
     version: require('./package.json').version,
     platform: process.platform,
+    isLinux: process.platform === 'linux',
+    engine: process.platform === 'linux' && zapret.engine ? 'hz-nfq' : 'winws.exe',
     admin: await util.isAdmin(),
     paths: util.paths(),
-    zapretVersion: zapret.ZAPRET_VERSION,
-    strategies: require('./src/assets/strategies').STRATEGIES.length,
-    tgVersion: tgws.installedVersion() || tgws.PINNED_VERSION
+    zapretVersion: process.platform === 'linux'
+      ? (zapret.installedVersion() || 'не установлен')
+      : zapret.ZAPRET_VERSION,
+    // в Linux-сборке список берём из реально распакованного релиза Flowseal
+    strategies: process.platform === 'linux'
+      ? (zapret.engine ? zapret.engine.listStrategies().length : 0)
+      : require('./src/assets/strategies').STRATEGIES.length,
+    tgVersion: process.platform === 'linux' ? 'только Windows' : (tgws.installedVersion() || tgws.PINNED_VERSION)
   })));
+
+  /* Состояние Linux-движка (nft + hz-nfq): используется разделом «Драйвер» */
+  ipcMain.handle('linux:diagnostics', wrap(async () => {
+    if (process.platform !== 'linux') return ok({ supported: false });
+    const d = await zapret.diagnostics();
+    return ok({ supported: true, ...d });
+  }));
+  ipcMain.handle('linux:strategies', wrap(async () => {
+    if (process.platform !== 'linux') return ok({ supported: false, list: [] });
+    const files = zapret.engine.listStrategies();
+    const list = files.map(f => ({ file: f, name: f.replace(/\.bat$/i, '') }));
+    log.info('LINUX', `стратегии: ${files.length}`);
+    return ok({ supported: true, list });
+  }));
+  ipcMain.handle('linux:installEngine', wrap(async () => {
+    if (process.platform !== 'linux') return ok({ supported: false });
+    return ok(zapret.engine.installEngine());
+  }));
+  ipcMain.handle('linux:engineLog', wrap(async () => {
+    if (process.platform !== 'linux') return ok({ supported: false });
+    return ok({ supported: true, log: zapret.engine.engineLog(), tail: zapret.engine.tailLog(zapret.engine.engineLog(), 80) });
+  }));
 
   ipcMain.handle('app:state', wrap(async () => {
     const [z, t] = await Promise.all([zapret.status(), tgws.status()]);
@@ -575,7 +636,7 @@ function registerIpc() {
   ipcMain.handle('updates:checkComponents', wrap(async (force) => {
     // принудительно обновляем кэш релизов Zapret и TG, затем проверяем заново
     try { await zapret.latestRelease({ force: true }); } catch (_) {}
-    try { await require('./src/tgws').latestRelease(); } catch (_) {}
+    if (process.platform !== 'linux') { try { await require('./src/tgws').latestRelease(); } catch (_) {} }
     updateInfo = await updates.check({ force: true });
     pushState();
     return ok({ info: updateInfo });
@@ -683,6 +744,53 @@ async function startServicesIfNeeded() {
 }
 
 /* ---------- жизненный цикл ---------- */
+/* ---------- отзывчивость интерфейса ---------- */
+/*
+ * Причина «Не отвечает» на 2–3 секунды (найдено в 2.2.2):
+ *  - pushState() каждые 4 с дергал sc.exe/PowerShell, а диагностика драйвера
+ *    внутри него — ещё и execFileSync: главный процесс стоял, окно не перерисовывалось;
+ *  - любая длинная IPC-операция (установка, обновление, тест скорости) выполнялась
+ *    в том же потоке, что и отрисовка окна.
+ * Решение: скрипты обслуживания вынесены в utilityProcess (отдельный процесс),
+ * а «пульс» отвечает интерфейсу даже во время тяжёлых операций.
+ */
+let worker = null;
+function ensureWorker() {
+  if (worker || !app.isPackaged && process.env.YH_NO_WORKER === '1') return worker;
+  try {
+    const { utilityProcess } = require('electron');
+    worker = utilityProcess.fork(path.join(__dirname, 'src', 'worker.js'), [], {
+      serviceName: 'Yume Haze: обслуживание',
+      stdio: 'ignore'
+    });
+    worker.on('exit', (code) => { log.warn('APP', 'Фоновый процесс завершился: ' + code); worker = null; });
+  } catch (e) { log.warn('APP', 'Фоновый процесс недоступен: ' + e.message); }
+  return worker;
+}
+
+/* Длительные операции обслуживания: в отдельном процессе, чтобы окно не ждало */
+function runInWorker(op, payload = {}, timeout = 120000) {
+  return new Promise((resolve) => {
+    const w = ensureWorker();
+    if (!w) return resolve(null);          // нет процесса — вызывающий сам решит, что делать
+    const id = Math.random().toString(36).slice(2);
+    let done = false;
+    const onMsg = (msg) => {
+      if (!msg || msg.id !== id) return;
+      done = true;
+      w.off('message', onMsg);
+      resolve(msg.result);
+    };
+    w.on('message', onMsg);
+    w.postMessage({ id, op, payload, paths: util.paths(), settings: config.get() });
+    setTimeout(() => {
+      if (done) return;
+      w.off('message', onMsg);
+      resolve(null);
+    }, timeout);
+  });
+}
+
 app.whenReady().then(async () => {
   initPaths();
   config.load();
@@ -712,6 +820,7 @@ app.whenReady().then(async () => {
 
   createWindow();
   buildTray();
+  ensureWorker();
   applyLoginItem(config.get().app.runAtLogin);
 
   app.on('activate', () => showWindow());

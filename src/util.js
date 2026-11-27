@@ -343,11 +343,34 @@ function findFiles(dir, matcher, out = [], depth = 0) {
   return out;
 }
 
+
+/* Синхронный запуск (только для быстрых проверок вроде --selftest). */
+function execSyncSafe(cmd, args = [], { timeout = 15000 } = {}) {
+  try {
+    const r = require('child_process').spawnSync(cmd, args, { encoding: 'utf8', timeout, windowsHide: true });
+    return { ok: r.status === 0, code: r.status, stdout: String(r.stdout || ''), stderr: String(r.stderr || '') };
+  } catch (e) {
+    return { ok: false, code: -1, stdout: '', stderr: e.message };
+  }
+}
+
+/* Копирование каталога (для распаковки релизов) */
+function copyDirSync(src, dst) {
+  fs.mkdirSync(dst, { recursive: true });
+  for (const it of fs.readdirSync(src, { withFileTypes: true })) {
+    const s = path.join(src, it.name);
+    const d = path.join(dst, it.name);
+    if (it.isDirectory()) copyDirSync(s, d);
+    else if (it.isFile()) fs.copyFileSync(s, d);
+  }
+}
+
 module.exports = {
   tasklistCached, invalidateProcessCache,
   IS_WIN, setPaths, paths, ensureDir, readJson, writeJson, appendLine, rotateFile,
   httpGet, getJson, downloadWithMirrors, exec, execConsole, isAdmin, runElevated, psQuote, relaunchElevated,
   decodeConsole, looksBroken,
   tasklist, findProcessByName, killByName, sc, serviceState, tcpProbe, freePort,
-  randomHex, humanBytes, humanDuration, rmrf, findFiles
+  randomHex, humanBytes, humanDuration, rmrf, findFiles,
+  execSyncSafe, copyDirSync
 };

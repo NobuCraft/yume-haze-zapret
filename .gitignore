@@ -7,3 +7,7 @@ out/
 .DS_Store
 Thumbs.db
 .env
+
+# артефакты сборки Linux-движка (собирается make -C linux/engine)
+linux/engine/hz-nfq
+*.blockmap

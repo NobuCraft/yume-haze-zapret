@@ -17,6 +17,10 @@ function on(channel, fn) {
 contextBridge.exposeInMainWorld('api', {
   /* общее */
   info: () => call('app:info'),
+  linuxDiagnostics: () => call('linux:diagnostics'),
+  linuxStrategies: () => call('linux:strategies'),
+  linuxInstallEngine: () => call('linux:installEngine'),
+  linuxEngineLog: () => call('linux:engineLog'),
   elevate: action => call('app:elevate', action),
   state: () => call('app:state'),
   onState: fn => on('state', fn),

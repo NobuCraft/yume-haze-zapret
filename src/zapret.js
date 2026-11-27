@@ -1048,13 +1048,29 @@ async function driverDiagnostics() {
   };
 }
 
-/* Версия файла через PowerShell (например 2.2.2) */
+/* Версия файла.
+   Раньше здесь был execFileSync с PowerShell: на каждом обновлении состояния
+   главный процесс вставал на 1–3 секунды — отсюда «Не отвечает».
+   Теперь: мгновенный разбор PE-ресурса версии + кэш. */
+const _verCache = new Map();
 function fileVersion(file) {
+  const key = String(file);
+  const hit = _verCache.get(key);
+  if (hit && Date.now() - hit.at < 10 * 60 * 1000) return hit.value;
+  let value = null;
   try {
-    const r = require('child_process').execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command',
-      `(Get-Item -LiteralPath '${file}').VersionInfo.FileVersion`], { encoding: 'utf8', timeout: 15000, windowsHide: true });
-    return String(r || '').trim() || null;
-  } catch (_) { return null; }
+    const buf = fs.readFileSync(file);
+    // ищем VS_FIXEDFILEINFO в ресурсе версии: сигнатура 0xFEEF04BD
+    const sig = Buffer.from([0xbd, 0x04, 0xef, 0xfe]);
+    const at = buf.indexOf(sig);
+    if (at > 0 && at + 16 < buf.length) {
+      const ms = buf.readUInt32LE(at + 8);
+      const ls = buf.readUInt32LE(at + 12);
+      value = `${(ms >>> 16) & 0xffff}.${ms & 0xffff}.${(ls >>> 16) & 0xffff}.${ls & 0xffff}`;
+    }
+  } catch (_) {}
+  _verCache.set(key, { at: Date.now(), value });
+  return value;
 }
 
 async function checkSignature(file) {

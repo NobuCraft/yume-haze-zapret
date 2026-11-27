@@ -5,8 +5,16 @@ const path = require('path');
 const { getJson, readJson, writeJson, paths } = require('./util');
 const config = require('./config');
 const log = require('./logger');
-const zapret = require('./zapret');
-const tgws = require('./tgws');
+const isLinux = process.platform === 'linux';
+const zapret = isLinux ? require('./zapret-linux') : require('./zapret');
+// TG WS Proxy — сборка под Windows (.exe). В Linux-сборке её не тянем:
+// прокси Telegram решается через zapret/локальные средства.
+const tgws = isLinux ? {
+  PINNED_VERSION: '—', exeExists: () => false, installedVersion: () => null,
+  latestRelease: async () => ({ tag: '—', notes: 'только Windows', publishedAt: null, size: 0 }),
+  install: async () => ({ ok: false, error: 'TG WS Proxy доступен только в Windows' }),
+  status: async () => ({ running: false, available: false })
+} : require('./tgws');
 
 function cacheFile() { return path.join(paths().cache, 'updates.json'); }
 
@@ -29,7 +37,7 @@ async function check({ force = false } = {}) {
   const out = {
     at: Date.now(),
     channel: 'stable',
-    zapret: { current: zapret.installedVersion(), latest: zapret.ZAPRET_VERSION, status: 'unknown', notes: '', url: '' },
+    zapret: { current: zapret.installedVersion(), latest: isLinux ? '1.10.4' : zapret.ZAPRET_VERSION, status: 'unknown', notes: '', url: '' },
     tg: { current: null, latest: tgws.PINNED_VERSION, status: 'unknown', notes: '', url: '' },
     app: { current: require('../package.json').version, latest: require('../package.json').version, status: 'ok' },
     errors: []
@@ -64,7 +72,8 @@ async function check({ force = false } = {}) {
   out.tg.current = tgws.installedVersion() || (tgws.exeExists() ? out.tg.latest : null);
   out.zapret.status = !out.zapret.current ? 'install'
     : cmp(out.zapret.latest, out.zapret.current) > 0 ? 'update' : 'ok';
-  out.tg.status = !out.tg.current ? 'install'
+  out.tg.status = isLinux ? 'na'
+    : !out.tg.current ? 'install'
     : cmp(out.tg.latest, out.tg.current) > 0 ? 'update' : 'ok';
 
   // Оболочка (проверяем наш собственный релиз, если он задан)
@@ -79,7 +88,7 @@ async function check({ force = false } = {}) {
   }
 
   writeJson(cacheFile(), out);
-  const pending = [out.zapret, out.tg].filter(c => c.status !== 'ok').length;
+  const pending = [out.zapret, out.tg].filter(c => c.status !== 'ok' && c.status !== 'na').length;
   log.info('UPD', `Проверка обновлений: Zapret ${out.zapret.current || '—'} → ${out.zapret.latest}, TG ${out.tg.current || '—'} → ${out.tg.latest}${pending ? ` (${pending} требуют внимания)` : ''}`);
   return out;
 }
@@ -87,7 +96,7 @@ async function check({ force = false } = {}) {
 function pendingCount(info) {
   if (!info) return 0;
   // только компоненты, которые приложение может поставить само (оболочку — вручную установщиком)
-  return [info.zapret, info.tg].filter(c => c && c.status !== 'ok').length;
+  return [info.zapret, info.tg].filter(c => c && c.status !== 'ok' && c.status !== 'na').length;
 }
 
 /* Есть ли новая версия самой оболочки (проверяется по репозиторию пользователя) */
@@ -108,7 +117,7 @@ async function updateAll({ onProgress } = {}) {
     } catch (e) { log.error('UPD', 'Zapret: ' + e.message); }
   }
   // TG ставим только если файла нет или версия старее — работающий прокси не трогаем
-  if (!tgws.exeExists() || info.tg.status === 'update') {
+  if (!isLinux && (!tgws.exeExists() || info.tg.status === 'update')) {
     try {
       log.info('UPD', `Обновляю TG WS Proxy: ${info.tg.current || '—'} → ${info.tg.latest}`);
       await tgws.install({ onProgress });

@@ -1,10 +1,38 @@
-# Yume Haze Zapret 2.2.1
+# Yume Haze Zapret 2.3.0
 
-Полноценное Windows-приложение (Electron) — графическая оболочка для **Zapret**
-([Flowseal/zapret-discord-youtube 1.10.4](https://github.com/Flowseal/zapret-discord-youtube/releases/tag/1.10.4))
-и **TG WS Proxy** ([Flowseal/tg-ws-proxy](https://github.com/Flowseal/tg-ws-proxy/releases)).
-Интерфейс полностью повторяет присланный макет: обзор с «орбом» питания, страницы Zapret/TG WS Proxy,
-тесты, автоподбор, обновления, журнал, настройки, «О программе» — и всё это работает, а не рисует заглушки.
+Графическая оболочка для **Zapret** ([Flowseal/zapret-discord-youtube](https://github.com/Flowseal/zapret-discord-youtube/releases))
+— обход блокировок Discord, YouTube и других сервисов. Работает в **Windows** и **Linux**.
+Интерфейс: обзор с «орбом» питания, страницы Zapret/TG WS Proxy, тесты, автоподбор,
+обновления, журнал, настройки — и всё это работает, а не рисует заглушки.
+
+## 0. Linux (CachyOS, Arch, Debian/Ubuntu, Fedora)
+
+В Linux-сборке вместо `winws.exe` + WinDivert работает **свой движок `hz-nfq`**
+на NFQUEUE: те же приёмы, что в стратегиях Flowseal (`multisplit`, `fake` + `repeats`,
+списки доменов, ipset, `ip-id=zero`, `cutoff`, `any-protocol`).
+Стратегии берутся из релиза Flowseal и разбираются из `.bat` — таблицы не зашиты.
+
+```bash
+# 1. зависимости (nftables, libnetfilter_queue, компилятор)
+./linux/install.sh            # сам определит pacman / apt / dnf
+
+# 2. запуск
+./release/YumeHazeZapret-2.3.0-x86_64.AppImage
+# либо .deb:  sudo apt install ./release/yume-haze-zapret_2.3.0_amd64.deb
+```
+
+* Приложение работает **без root**. Пароль polkit спрашивается один раз — для правил
+  `nftables` и запуска движка.
+* «Zapret» → «Обновления» → «Установить» скачает релиз Flowseal (1.10.4) и соберёт профиль
+  под выбранную стратегию.
+* Служба systemd (`yume-haze-zapret.service`) — чтобы обход поднимался при загрузке.
+* Проверить руками: `nft list table inet hzq`, `hz-nfq --selftest`.
+* Пошаговая инструкция для CachyOS (зависимости, первый запуск, автозапуск, частые ошибки) —
+  [`УСТАНОВКА-NA-CACHYOS.md`](УСТАНОВКА-NA-CACHYOS.md).
+
+Почему не zapret для Linux «как есть»: winws.exe — Windows-бинарь с WinDivert, под Linux
+он не запускается. Поэтому движок свой, но совместимый по смыслу стратегий и по формату
+списков — те же `list-general.txt`, `^домены`, CIDR.
 
 ---
 
@@ -18,7 +46,7 @@ npm install
 npm start
 ```
 
-> Для перехвата трафика `winws.exe` нужны **права администратора** — запускайте
+> Windows: для перехвата трафика `winws.exe` нужны **права администратора** — запускайте
 > терминал «от имени администратора» (или собранный `.exe` с ПКМ → «Запуск от имени администратора»).
 
 При первом запуске компоненты не установлены — откройте **Обновления → Установить**
@@ -26,7 +54,7 @@ npm start
 
 ## 2. Готовые сборки
 
-Установщик собирается локально командой `npm run dist:nsis` → `release/YumeHazeZapret-<версия>-setup.exe`
+Windows: установщик собирается командой `npm run dist:nsis`; Linux: `npm run dist:linux` (AppImage, deb, tar.gz) → `release/YumeHazeZapret-<версия>-setup.exe`
 (NSIS, x64, ~81 МБ).
 
 Готовый файл текущей версии — в разделе [Releases](https://github.com/NobuCraft/yume-haze-zapret/releases/latest).
@@ -191,6 +219,19 @@ node scripts/selftest.js && node scripts/elevation-test.js && node scripts/spawn
 Плюс 17 тестов запуска `winws.exe` (импорт `sc`, путь без кавычек для `spawn`,
 отсутствие `.bin`/`winws.exe`, разбор вывода, IPC-каналы драйвера) и 8 тестов повышения прав: код `ELEVATION_REQUIRED`, отмена в UAC, защита от повторных
 окон, неинтерактивный автозапуск, разбор отложенной команды `yh-zapret://…`.
+
+```bash
+node scripts/selftest.js        # 56 тестов: разбор .bat, IPset, списки, IPC ↔ preload
+node scripts/linux-test.js      # 15 тестов Linux: движок, nft, профиль, списки, адаптер
+linux/engine/hz-nfq --selftest  # самопроверка C-движка (сборка: make -C linux/engine)
+xvfb-run -a node scripts/electron-smoke.js   # окно поднимается без ошибок в консоли и журнале
+xvfb-run -a node scripts/ui-check.js         # все 8 разделов отрисовываются и заполнены данными
+```
+
+`ui-check.js` подключается к живому окну по DevTools-протоколу, кликает каждый пункт меню
+и проверяет, что страница содержит текст, элементы и в ней нет `undefined`/`NaN`/«не загрузилось»
+(ровно та регрессия, которая была в 2.2.0). `electron-smoke.js` дополнительно ловит исключения
+главного процесса — именно он поймал `Cannot access 'TG_STUB' before initialization` в 2.3.0.
 
 ```bash
 python3 scripts/ui-check.py      # требует pip install playwright && playwright install chromium
