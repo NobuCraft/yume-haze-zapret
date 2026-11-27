@@ -10,9 +10,14 @@ const { execFileSync } = require('child_process');
 
 let pass = 0, fail = 0;
 const failures = [];
-function t(name, fn) {
-  try { fn(); pass++; console.log('  ✓ ' + name); }
-  catch (e) { fail++; failures.push(name + ' → ' + e.message); console.log('  ✗ ' + name + ' → ' + e.message); }
+/* Поддерживает и синхронные, и асинхронные проверки: очередь выполняется по порядку. */
+const queue = [];
+function t(name, fn) { queue.push([name, fn]); }
+async function runTests() {
+  for (const [name, fn] of queue) {
+    try { await fn(); pass++; console.log('  ✓ ' + name); }
+    catch (e) { fail++; failures.push(name + ' → ' + e.message); console.log('  ✗ ' + name + ' → ' + e.message); }
+  }
 }
 function eq(a, b, msg) { if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error((msg || '') + ` ожидалось ${JSON.stringify(b)}, получено ${JSON.stringify(a)}`); }
 function ok(v, msg) { if (!v) throw new Error(msg || 'ложь'); }
@@ -138,10 +143,49 @@ t('preflight перечисляет проблемы понятным текст
   ok(true);
 });
 
+t('список стратегий для интерфейса: имена и признаки из реальных .bat', async () => {
+  // в фикстуре два файла; на настоящем релизе их 23 — проверяем формат, а не количество
+  fs.writeFileSync(path.join(FIX, 'my-custom.bat'), [
+    '@echo off', 'set "BIN=%~dp0bin\\"', 'set "LISTS=%~dp0lists\\"',
+    'start "zapret" /min "%BIN%winws.exe" --wf-tcp=443 --filter-tcp=443 --dpi-desync=fake,multisplit --dpi-desync-repeats=8 --dpi-desync-fake-tls="%BIN%tls_clienthello_www_google_com.bin"'
+  ].join('\r\n'), 'utf8');
+  const list = zapLinux.strategiesList();
+  ok(list.length >= 3, 'стратегий мало: ' + list.length);
+  const general = list.find(s => s.file === 'general.bat');
+  ok(general && general.name === 'General', 'у general.bat нет имени из макета');
+  ok(general.feats.includes('multisplit'), 'у general.bat не распознан multisplit');
+  ok(list.every(s => s.file && s.name && s.group && Array.isArray(s.feats)), 'запись без обязательных полей');
+  // файла нет в макете — признаки собираются из аргументов winws
+  const custom = list.find(s => s.file === 'my-custom.bat');
+  ok(custom && custom.feats.includes('fake-tls') && custom.feats.includes('repeats=8') && custom.feats.includes('fake+multisplit'),
+     'признаки из .bat: ' + (custom && custom.feats));
+  eq(custom.name, 'my-custom', 'имя из имени файла');
+  // а знакомый файл берёт описание из макета
+  const gen = list.find(s => s.file === 'service.bat');
+  ok(gen && gen.group === 'Service', 'service.bat должен попасть в группу Service');
+});
+
+t('статус отдаёт стратегии, версию и признак «установлено»', async () => {
+  const st = await zapLinux.status();
+  ok(st.installed === true, 'installed должен быть true после установки');
+  ok(st.strategies.length === zapLinux.strategiesList().length, 'состав не совпадает');
+  ok(st.strategies.some(s => s.file === 'general.bat' && s.name === 'General'), 'нет general.bat в статусе');
+  ok(st.version, 'версия не определяется');
+  ok(st.platform === 'linux');
+});
+
+t('выбор несуществующей стратегии даёт понятную ошибку', async () => {
+  let msg = '';
+  try { await zapLinux.setStrategy('nope.bat'); } catch (e) { msg = e.message; }
+  ok(/не найдена|не установлены/.test(msg), 'текст ошибки: ' + msg);
+});
+
 t('правила nft: генератор команд не падает на мусорных портах', () => {
   const linuxMod = require('../src/linux');
   ok(typeof linuxMod.applyRules === 'function' && typeof linuxMod.clearRules === 'function');
 });
 
-console.log(`\n${fail === 0 ? '✓' : '✗'} Тесты Linux: ${pass} успешно, ${fail} с ошибками`);
-if (fail) { failures.forEach(f => console.log('  ! ' + f)); process.exit(1); }
+runTests().then(() => {
+  console.log(`\n${fail === 0 ? '✓' : '✗'} Тесты Linux: ${pass} успешно, ${fail} с ошибками`);
+  if (fail) { failures.forEach(f => console.log('  ! ' + f)); process.exit(1); }
+});

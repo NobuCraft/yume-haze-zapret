@@ -929,7 +929,9 @@ function renderOverviewInner(z, t) {
   /* tg page */
   guard(() => {
   if (t) {
-    _tChip.outerHTML = `<span class="chip ${tOn ? 'on' : ''}" id="tChip">${tOn ? 'работает' : t.installed ? 'остановлен' : 'не установлен'}</span>`;
+    const tgLabel = S.isLinux ? 'только Windows'
+      : tOn ? 'работает' : t.installed ? 'остановлен' : 'не установлен';
+    _tChip.outerHTML = `<span class="chip ${tOn && !S.isLinux ? 'on' : ''}" id="tChip">${tgLabel}</span>`;
     if (document.activeElement !== $('#tgLink')) _tgLink.value = t.link;
     if (document.activeElement !== $('#tgSecret')) _tgSecret.value = t.settings.secret;
     if (document.activeElement !== $('#tgHost')) _tgHost.value = t.settings.host;
@@ -1442,6 +1444,21 @@ $('#adminBanner') && $('#adminBanner').addEventListener('click', e => {
     if ($('#tbVer')) $('#tbVer').textContent = info.version;
     if ($('#abVer')) $('#abVer').textContent = info.version;
     S.admin = !!info.admin;
+    S.isLinux = !!info.isLinux;
+    /* Linux: TG WS Proxy — Windows-бинарь, кнопки подключения/установки не нужны */
+    if (S.isLinux) {
+      document.querySelectorAll('[data-act="tgConnect"],[data-act="installTg"],[data-toggle-svc="t"]')
+        .forEach(el => {
+          el.disabled = true;
+          el.title = 'TG WS Proxy доступен только в Windows';
+          el.style.opacity = '.45';
+        });
+      const tChip = $('#tChip');
+      if (tChip) { tChip.textContent = 'только Windows'; tChip.className = 'chip'; }
+      const mute = (sel, txt) => { const el = $(sel); if (el) el.textContent = txt; };
+      mute('#tgLink', 'недоступно в Linux');
+      mute('#sdTt', 'только Windows');
+    }
     if (!info.admin) showAdminBanner();
     else { const el = $('#adminBanner'); if (el) el.hidden = true; }
   }

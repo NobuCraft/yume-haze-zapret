@@ -358,14 +358,17 @@ function registerIpc() {
     platform: process.platform,
     isLinux: process.platform === 'linux',
     engine: process.platform === 'linux' && zapret.engine ? 'hz-nfq' : 'winws.exe',
+    /* Linux: список стратегий берём из реально установленного релиза Flowseal,
+       поэтому renderer не подставляет «22 Windows-стратегии из макета» */
+    strategiesLive: process.platform === 'linux',
     admin: await util.isAdmin(),
     paths: util.paths(),
     zapretVersion: process.platform === 'linux'
       ? (zapret.installedVersion() || 'не установлен')
       : zapret.ZAPRET_VERSION,
-    // в Linux-сборке список берём из реально распакованного релиза Flowseal
+    // Windows: 22 стратегии из макета, Linux: реальные .bat из релиза Flowseal
     strategies: process.platform === 'linux'
-      ? (zapret.engine ? zapret.engine.listStrategies().length : 0)
+      ? zapret.strategiesList().length
       : require('./src/assets/strategies').STRATEGIES.length,
     tgVersion: process.platform === 'linux' ? 'только Windows' : (tgws.installedVersion() || tgws.PINNED_VERSION)
   })));
@@ -378,10 +381,9 @@ function registerIpc() {
   }));
   ipcMain.handle('linux:strategies', wrap(async () => {
     if (process.platform !== 'linux') return ok({ supported: false, list: [] });
-    const files = zapret.engine.listStrategies();
-    const list = files.map(f => ({ file: f, name: f.replace(/\.bat$/i, '') }));
-    log.info('LINUX', `стратегии: ${files.length}`);
-    return ok({ supported: true, list });
+    const list = zapret.strategiesList();
+    log.info('LINUX', `стратегии: ${list.length}`);
+    return ok({ supported: true, list, strategies: list });
   }));
   ipcMain.handle('linux:installEngine', wrap(async () => {
     if (process.platform !== 'linux') return ok({ supported: false });

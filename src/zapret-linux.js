@@ -19,6 +19,72 @@ function dir() { return linux.baseDir(); }
 function batPath(file) { return path.join(dir(), file || config.get().zapret.strategy); }
 function valid() { return linux.strategyExists(config.get().zapret.strategy) && linux.valid(); }
 
+/* ------------------------------------------------------------------ список стратегий для UI */
+/*
+ * На Windows интерфейс берёт STRATEGIES из src/assets (22 записи макета).
+ * Под Linux набор зависит от установленного релиза Flowseal, поэтому строим его
+ * по реальным .bat-файлам: описание берём из STRATEGIES, если имя совпало,
+ * иначе собираем по аргументам winws (--dpi-desync, --dpi-desync-split-pos и т.д.).
+ */
+const META = require('./assets/strategies').STRATEGIES;
+
+function featsOf(args) {
+  const out = new Set();
+  const val = k => {
+    const i = args.findIndex(a => a === k || a.startsWith(k + '='));
+    if (i < 0) return null;
+    return args[i].includes('=') ? args[i].split('=').slice(1).join('=') : (args[i + 1] || null);
+  };
+  const splitPos = val('--dpi-desync-split-pos');
+  if (splitPos) out.add(splitPos.length > 12 ? 'split-pos' : `split-pos=${splitPos}`);
+  const seqovl = val('--dpi-desync-split-seqovl');
+  if (seqovl && seqovl !== '0') out.add(`seqovl=${seqovl}`);
+  if (args.includes('--dpi-desync-ip-id-zero') || args.includes('--ip-id=zero')) out.add('ip-id=zero');
+  const rp = val('--dpi-desync-repeats');
+  if (rp && rp !== '0') out.add(`repeats=${rp}`);
+  if (val('--dpi-desync-fake-tls') || val('--dpi-desync-fake-tls-mod')) out.add('fake-tls');
+  const fakeArgs = args.filter(a => a.startsWith('--dpi-desync-fake'));
+  if (fakeArgs.length && args.some(a => /--dpi-desync=\S*multisplit/.test(a))) out.add('fake+multisplit');
+  if (val('--dpi-desync-fake-quic')) out.add('fake-quic');
+  if (val('--dpi-desync-fake-http')) out.add('fake-http');
+  if (val('--dpi-desync-split-pos') && /hostfakesplit|hostfake/i.test(args.join(' '))) out.add('hostfakesplit');
+  if (args.some(a => /^\(game_filter_tcp|GameFilterTCP/.test(a))) out.add('game-filter');
+  return [...out];
+}
+
+function metaFor(file, args) {
+  const byFile = META.find(m => m.file === file);
+  if (byFile) return { name: byFile.name, group: byFile.group, note: byFile.note, feats: byFile.feats };
+  const base = file.replace(/\.bat$/i, '');
+  const group = /service/i.test(base) ? 'Service' : /game/i.test(base) ? 'Game' : 'Flowseal';
+  const desync = [];
+  const m = args.join(' ');
+  if (/--dpi-desync=([^\s]+)/.test(m)) desync.push(RegExp.$1);
+  return {
+    name: base,
+    group,
+    note: desync.length ? `Из релиза Flowseal: ${desync.join(', ')}.` : 'Стратегия из релиза Flowseal.',
+    feats: featsOf(args)
+  };
+}
+
+function ipsetLines() {
+  try {
+    const f = path.join(dir(), 'lists', 'ipset-all.txt');
+    return fs.readFileSync(f, 'utf8').split('\n').filter(l => l.trim() && !l.trim().startsWith('#')).length;
+  } catch (_) { return 0; }
+}
+
+function strategiesList() {
+  const files = linux.listStrategies();
+  return files.map(file => {
+    let args = [];
+    try { args = [].concat(win.parseBatArgs(file, dir()) || []); } catch (_) { args = []; }
+    const meta = metaFor(file, args);
+    return { file, ...meta };
+  });
+}
+
 async function status() {
   const st = await linux.status();
   const cfg = config.get();
@@ -28,12 +94,20 @@ async function status() {
     state: st.running ? 'RUNNING' : 'STOPPED',
     service: 'n/a',
     strategy: cfg.zapret.strategy,
-    version: st.version,
+    version: st.version || linux.installedVersion(),
     engine: st.engine,
     rules: st.rules,
     startedAt: st.startedAt,
     platform: 'linux',
-    driver: st.driver
+    driver: st.driver,
+    /* то, что рендер ждёт от Windows-адаптера */
+    installed: !!(linux.installedVersion() || linux.listStrategies().length),
+    dir: dir(),
+    strategies: strategiesList(),
+    service: { installed: false, state: 'n/a' },
+    /* ipset на Linux приходит из релиза Flowseal; интерфейс показывает количество строк */
+    ipset: { mode: cfg.zapret.ipsetMode, lines: ipsetLines(), exists: ipsetLines() > 0 },
+    expectedVersion: '1.10.4'
   };
 }
 
@@ -53,7 +127,12 @@ function releaseKnown() { return _relKnown; }
 function ZAPRET_VERSION() { return '1.10.4'; }
 
 async function setStrategy(file) {
-  if (!linux.strategyExists(file)) throw new Error(`Стратегия «${file}» не найдена`);
+  if (!linux.strategyExists(file)) {
+    const n = linux.listStrategies().length;
+    throw new Error(n
+      ? `Стратегия «${file}» не найдена в установленном релизе (доступно ${n})`
+      : 'Стратегии не установлены — откройте «Обновления» → «Установить»');
+  }
   config.patch({ zapret: { strategy: file } });
   const st = await linux.status();
   if (st.running) await linux.restart();
@@ -228,6 +307,7 @@ module.exports = {
   driverDiagnostics, driverCheck, diagnostics, clearDiscordCache,
   readList, writeList, listInfo, detectExisting, lastRunInfo,
   setGameFilter, setIpsetMode, updateIpset, updateHosts, toggleCheckUpdates, launch,
+  strategiesList,
   parseBatArgs: win.parseBatArgs, tokenizeArgs: win.tokenizeArgs,
   engine: linux
 };
