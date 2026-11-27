@@ -462,7 +462,9 @@ async function diagnostics() {
       : polkit.cmd === 'direct' ? 'запущено от root'
       : polkit.cmd === 'pkexec' ? 'pkexec (спросит пароль один раз)' : 'sudo -n'
   });
-  items.push({ name: 'Движок hz-nfq', ok: valid(), text: valid() ? engineBin() : 'не установлен' });
+  // движок кладём при первом обращении: это копирование файла, прав root не требует
+  if (!valid()) { try { installEngine(); } catch (e) { log.warn('LINUX', 'движок не установлен: ' + e.message); } }
+  items.push({ name: 'Движок hz-nfq', ok: valid(), text: valid() ? engineBin() : 'не установлен — проверьте, что файл hz-nfq есть в сборке' });
   let selftest = null;
   if (valid()) {
     const r = util.execSyncSafe(engineBin(), ['--selftest']);

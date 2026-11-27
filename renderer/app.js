@@ -365,13 +365,33 @@ async function renderDriver() {
   const box = $('#drvInfo');
   if (!box) return;
   const r = await api.zapret.driver();
-  if (!r || !r.ok) { box.innerHTML = `<div class="empty">Не удалось получить состояние драйвера</div>`; return; }
-  const d = r.driver || r;
+  const d = (r && (r.driver || r)) || null;
+  /* В Linux «ok: false» — это нормальное состояние (движок ещё не включён),
+     поэтому показываем список проверок, а не «не удалось получить». */
+  if (!d || (!r.ok && d.platform !== 'linux')) {
+    box.innerHTML = `<div class="empty">Не удалось получить состояние драйвера${r && r.error ? ': ' + esc(r.error) : ''}</div>`;
+    return;
+  }
   const [lbl, kind] = DRV_LABEL[d.service] || [d.service || '—', 'warn'];
   const sig = d.signature;
   const sigText = sig
     ? (sig.valid ? `<span class="chip ok">подпись действительна</span>` : `<span class="chip warn">подпись: ${esc(sig.status || 'неизвестно')}</span>`)
     : '';
+  /* Linux: вместо WinDivert — nftables + hz-nfq, показываем реальные проверки движка */
+  if (d.platform === 'linux') {
+    const items = (d.items || []).map(i => ({ ok: i.ok, label: i.name, detail: i.text, warnOnly: false }));
+    const tail = (d.engine && d.engine.tail || []).filter(Boolean).slice(-8);
+    box.innerHTML = items.map(r => `
+      <div class="diag"><i class="st ${r.ok ? 'ok' : 'bad'}"></i><div class="d"><b>${esc(r.label)}</b><span>${esc(r.detail)}</span></div></div>`).join('') +
+      (d.hint ? `<div class="muted" style="font-size:12px;margin-top:8px">${esc(d.hint)}</div>` : '') +
+      (tail.length ? `<div class="mt"><b style="font-size:12px">Журнал движка</b><pre class="log" style="max-height:180px;overflow:auto;font-size:11.5px;margin-top:6px">${esc(tail.join('\n'))}</pre></div>` : '') +
+      `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+        <button class="btn primary" data-act="drvCheck">Проверить снова</button>
+        <button class="btn" data-act="drvSvc" title="systemd: обход поднимается при загрузке">Установить как службу</button>
+        <button class="btn ghost" data-act="removeSvc">Удалить службу</button>
+      </div>`;
+    return;
+  }
   const rows = [
     {
       ok: kind === 'ok' || d.service === 'not-installed', label: `Служба драйвера: ${lbl}`,
@@ -500,6 +520,7 @@ async function doAction(name, btn) {
     case 'restartZ': {
       let r = await withBtn(btn, () => api.zapret.restart());
       if (r && r.code === 'ELEVATION_REQUIRED') { await handleAdminResult(r, { action: 'restart' }); break; }
+      if (r && !r.ok && r.error) { toast('Ошибка перезапуска', r.error, 'err', 12000); break; }
       r && r.ok ? toast('Zapret перезапущен', S.settings.zapret.strategy) : toast('Ошибка перезапуска', r && r.error, 'err');
       break;
     }
@@ -557,7 +578,8 @@ async function doAction(name, btn) {
     /* --- zapret --- */
     case 'installSvc': {
       const r = await withBtn(btn, () => api.zapret.installService());
-      if (r.ok) toast('Служба установлена', 'Автозапуск при загрузке Windows');
+      if (r && r.error && !r.ok) { toast('Не удалось установить службу', r.error, 'err', 12000); loadState(); break; }
+      if (r.ok) toast('Служба установлена', r.unit ? `systemd: ${r.unit}` : 'Автозапуск при загрузке системы');
       else toast('Не удалось установить службу', r.error, 'err', 9000);
       loadState();
       break;
